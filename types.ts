@@ -5,7 +5,7 @@ export interface PromptItem {
   id: string;
   act: string;
   prompt: string;
-  description?: string; // New field for detailed description
+  description?: string;
   for_devs: boolean;
   type: 'TEXT' | 'STRUCTURED' | 'IMAGE';
   contributor: string;
@@ -27,4 +27,16 @@ export interface ChatSession {
   messages: Message[];
   startTime: number;
   lastUpdateTime: number;
+  // Metadata to distinguish sessions in history/compare mode
+  modelId?: string; 
+  isComparison?: boolean;
+}
+
+export interface SimulationSettings {
+  model: string;
+  temperature: number;
+  topP: number;
+  topK: number;
+  thinkingBudget: number; // Specific to Gemini 3 models
+  maxOutputTokens: number;
 }
