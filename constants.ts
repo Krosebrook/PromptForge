@@ -1,5 +1,94 @@
 
-import { PromptItem } from './types';
+import { PromptItem, Theme } from './types';
+
+export const THEMES: Theme[] = [
+  {
+    id: 'pro-dark',
+    name: 'Pro Dark',
+    colors: {
+      '--bg-app': '#020617',     // slate-950
+      '--bg-panel': '#0f172a',   // slate-900
+      '--bg-element': '#1e293b', // slate-800
+      '--bg-element-hover': '#334155', // slate-700
+      '--border': '#1e293b',     // slate-800
+      '--text-heading': '#ffffff',
+      '--text-body': '#e2e8f0',  // slate-200
+      '--text-muted': '#94a3b8', // slate-400
+      '--accent': '#4f46e5',     // indigo-600
+      '--accent-hover': '#4338ca', // indigo-700
+      '--accent-text': '#ffffff'
+    }
+  },
+  {
+    id: 'pro-light',
+    name: 'Pro Light',
+    colors: {
+      '--bg-app': '#f8fafc',     // slate-50
+      '--bg-panel': '#ffffff',   // white
+      '--bg-element': '#f1f5f9', // slate-100
+      '--bg-element-hover': '#e2e8f0', // slate-200
+      '--border': '#e2e8f0',     // slate-200
+      '--text-heading': '#0f172a', // slate-900
+      '--text-body': '#334155',  // slate-700
+      '--text-muted': '#64748b', // slate-500
+      '--accent': '#4f46e5',     // indigo-600
+      '--accent-hover': '#4338ca',
+      '--accent-text': '#ffffff'
+    }
+  },
+  {
+    id: 'midnight',
+    name: 'Midnight',
+    colors: {
+      '--bg-app': '#0b0c15',     // Deep dark
+      '--bg-panel': '#11121f',   // Dark blue-ish
+      '--bg-element': '#1a1d2d', 
+      '--bg-element-hover': '#24283b',
+      '--border': '#24283b',
+      '--text-heading': '#e0def4',
+      '--text-body': '#c4c3e0',
+      '--text-muted': '#7c7a9e',
+      '--accent': '#bb9af7',     // Soft Purple
+      '--accent-hover': '#9d79d6',
+      '--accent-text': '#11121f'
+    }
+  }
+];
+
+export const TEMPLATE_PROMPTS = [
+  {
+    name: 'Strict Coder',
+    act: 'Senior Software Engineer',
+    category: 'Code Assistance',
+    tags: ['coding', 'best-practices', 'typescript'],
+    description: 'Enforces strict typing, modular patterns, and robust error handling.',
+    prompt: 'You are a Senior Software Engineer. Your goal is to provide production-ready code. \n\nRules:\n1. Always strictly type variables.\n2. Handle edge cases and errors gracefully.\n3. Prefer functional programming patterns where applicable.\n4. Comment complex logic with "why", not "what".'
+  },
+  {
+    name: 'Creative Writer',
+    act: 'Master Storyteller',
+    category: 'Writing & Content',
+    tags: ['creative', 'fiction', 'narrative'],
+    description: 'Focuses on sensory details, character depth, and engaging pacing.',
+    prompt: 'You are a Master Storyteller. Your goal is to weave engaging narratives.\n\nGuidelines:\n- Show, don\'t tell.\n- Focus on sensory details (sight, sound, smell).\n- Develop complex characters with distinct voices.\n- Maintain consistent pacing.'
+  },
+  {
+    name: 'Data Scientist',
+    act: 'Data Consultant',
+    category: 'Data Analysis',
+    tags: ['python', 'pandas', 'analytics'],
+    description: 'Provides analytical insights, Python code for manipulation, and visualization advice.',
+    prompt: 'You are a Data Science Consultant. Help the user analyze data, find patterns, and visualize results.\n\nTools:\n- Python (Pandas, NumPy, Matplotlib)\n- Statistical Analysis\n\nOutput:\n- Clear actionable insights.\n- Reproducible code blocks.'
+  },
+  {
+    name: 'Socratic Tutor',
+    act: 'Socratic Guide',
+    category: 'Miscellaneous',
+    tags: ['education', 'learning', 'philosophy'],
+    description: 'Guides the user to the answer through questioning rather than direct answers.',
+    prompt: 'You are a Socratic Teacher. Do not give the user the answer directly. Instead, ask guiding questions that help them discover the answer themselves. Validate their thinking and gently correct misconceptions.'
+  }
+];
 
 export const PROMPTS_DATA: PromptItem[] = [
   {

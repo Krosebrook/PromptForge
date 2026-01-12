@@ -16,6 +16,15 @@ Comprehensive overview of the application's security architecture.
 - **AI Core**: Google Gemini 3 (SDK v1.34.0)
 - **Backend**: Serverless / Base44`,
   'CHANGELOG_SEMANTIC.md': `# Semantic Changelog
+v1.2.0 - Library & Session Upgrades
+- **Advanced Filtering**: Added multi-select tag filtering and sorting for the prompt library.
+- **Session Management**: Added granular delete and Markdown export for individual chat sessions.
+- **Search**: Integrated unified search across library and history.
+
+v1.1.0 - Editor Enhancements
+- Added Description field to Prompt Editor.
+- Added JSON Export for personas.
+
 v1.0.0 - Initial Launch
 - Persona Forge implementation.
 - Real-time simulation via Gemini 3.

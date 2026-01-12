@@ -40,3 +40,21 @@ export interface SimulationSettings {
   thinkingBudget: number; // Specific to Gemini 3 models
   maxOutputTokens: number;
 }
+
+export interface Theme {
+  id: string;
+  name: string;
+  colors: {
+    '--bg-app': string;
+    '--bg-panel': string;
+    '--bg-element': string;
+    '--bg-element-hover': string;
+    '--border': string;
+    '--text-heading': string;
+    '--text-body': string;
+    '--text-muted': string;
+    '--accent': string;
+    '--accent-hover': string;
+    '--accent-text': string;
+  };
+}
