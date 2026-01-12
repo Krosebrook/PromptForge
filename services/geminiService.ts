@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, ChatSession, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { SimulationSettings } from "../types";
 
 class GeminiService {
@@ -32,13 +32,10 @@ class GeminiService {
 
     // Apply thinking budget if specified and using supported models (Gemini 3/2.5)
     if (settings?.thinkingBudget && settings.thinkingBudget > 0) {
-      // Gemini 3 Flash/Pro supports thinking config
       if (model.includes('gemini-3') || model.includes('gemini-2.5')) {
         config.thinkingConfig = {
           thinkingBudget: settings.thinkingBudget
         };
-        // When thinking is enabled, temperature is often recommended to be managed by the model or kept specific
-        // However, we pass user preference if set.
       }
     }
 
@@ -48,14 +45,44 @@ class GeminiService {
     });
   }
 
+  /**
+   * Generates a native image using the nano banana series models.
+   */
+  public async generateImage(prompt: string, aspectRatio: "1:1" | "4:3" | "16:9" = "1:1"): Promise<string | null> {
+    try {
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [{ text: prompt }]
+        },
+        config: {
+          imageConfig: {
+            aspectRatio
+          }
+        }
+      });
+
+      if (!response.candidates?.[0]?.content?.parts) return null;
+
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error("Gemini Image Generation Error:", error);
+      return null;
+    }
+  }
+
   public async sendMessage(chat: any, message: string): Promise<string> {
     try {
       const response: GenerateContentResponse = await chat.sendMessage({ message });
       return response.text || "No response text received.";
     } catch (error) {
       console.error("Gemini API Error:", error);
-      // Return a user-friendly error string instead of throwing to prevent UI crash
-      return `[System Error]: Failed to communicate with ${this.ai ? 'Gemini' : 'API'}. Please check your connection and quota.`;
+      return `[System Error]: Failed to communicate with Gemini. Please check your connection and quota.`;
     }
   }
 }

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { PROMPTS_DATA, THEMES, TEMPLATE_PROMPTS } from './constants';
-import { PromptItem, Message, Category, ChatSession, SimulationSettings } from './types';
+import { PROMPTS_DATA, THEMES, TEMPLATE_PROMPTS as INITIAL_TEMPLATES } from './constants';
+import { PromptItem, Message, Category, ChatSession, SimulationSettings, PersonaVersion } from './types';
 import { geminiService } from './services/geminiService';
 import { DOCUMENTATION_CONTENT } from './documentation';
 import { 
@@ -50,7 +50,18 @@ import {
   Download,
   SortAsc,
   Tag,
-  FileDown
+  FileDown,
+  Upload,
+  RefreshCw,
+  Layers,
+  ChevronDown,
+  Undo2,
+  Redo2,
+  Share2,
+  Clock,
+  Save,
+  ArrowUpDown,
+  Calendar
 } from 'lucide-react';
 
 const CATEGORIES: Category[] = [
@@ -61,7 +72,8 @@ const CATEGORIES: Category[] = [
   'Miscellaneous'
 ];
 
-// Default settings for new users
+const TYPES: PromptItem['type'][] = ['TEXT', 'STRUCTURED', 'IMAGE'];
+
 const DEFAULT_SETTINGS: SimulationSettings = {
   model: 'gemini-3-flash-preview',
   temperature: 0.7,
@@ -88,7 +100,6 @@ const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; chi
   );
 };
 
-// Sub-component for rendering a single chat stream
 const ChatStreamView: React.FC<{
   session: ChatSession | null;
   settings: SimulationSettings;
@@ -151,6 +162,10 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('custom_prompts');
     return saved ? JSON.parse(saved) : [];
   });
+  const [customTemplates, setCustomTemplates] = useState<any[]>(() => {
+    const saved = localStorage.getItem('custom_templates');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     const saved = localStorage.getItem('favorites');
     return saved ? new Set(JSON.parse(saved)) : new Set();
@@ -170,6 +185,7 @@ const App: React.FC = () => {
   // UI Navigation states
   const [view, setView] = useState<'library' | 'favorites' | 'history' | 'docs'>('library');
   const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
+  const [activeType, setActiveType] = useState<PromptItem['type'] | 'All'>('All');
   const [selectedContributor, setSelectedContributor] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -177,31 +193,37 @@ const App: React.FC = () => {
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<'name' | 'recent'>('name');
   
+  // History UI States
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historySortOrder, setHistorySortOrder] = useState<'recent' | 'name' | 'model'>('recent');
+
   // Selection & Compare states
   const [selectedPrompt, setSelectedPrompt] = useState<PromptItem | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   
+  // Image Generation States
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+
   // Comparison State
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [secondarySettings, setSecondarySettings] = useState<SimulationSettings>({
     ...DEFAULT_SETTINGS,
-    model: 'gemini-3-pro-preview' // Default challenger to Pro
+    model: 'gemini-3-pro-preview'
   });
 
   // Session State
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const [secondarySession, setSecondarySession] = useState<ChatSession | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]); // Legacy ref
   
   // Editor/Modal states
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<Partial<PromptItem> | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsTarget, setSettingsTarget] = useState<'primary' | 'secondary'>('primary'); // Which settings to edit
-  const [settingsTab, setSettingsTab] = useState<'interface' | 'model' | 'params'>('model');
+  const [settingsTarget, setSettingsTarget] = useState<'primary' | 'secondary'>('primary');
+  const [settingsTab, setSettingsTab] = useState<'model' | 'params' | 'theme'>('model');
   const [isClearHistoryConfirmOpen, setIsClearHistoryConfirmOpen] = useState(false);
   
   // Interaction states
@@ -209,12 +231,18 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Refs for API interaction
+  // Undo/Redo Logic
+  const [editorHistory, setEditorHistory] = useState<Partial<PromptItem>[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Refs
   const chatRef = useRef<any>(null);
   const secondaryChatRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync to localStorage
   useEffect(() => localStorage.setItem('custom_prompts', JSON.stringify(customPrompts)), [customPrompts]);
+  useEffect(() => localStorage.setItem('custom_templates', JSON.stringify(customTemplates)), [customTemplates]);
   useEffect(() => localStorage.setItem('favorites', JSON.stringify(Array.from(favorites))), [favorites]);
   useEffect(() => localStorage.setItem('chat_history', JSON.stringify(chatHistory)), [chatHistory]);
   useEffect(() => localStorage.setItem('simulation_settings', JSON.stringify(settings)), [settings]);
@@ -231,6 +259,7 @@ const App: React.FC = () => {
 
   // --- DERIVED DATA ---
   const allPrompts = useMemo(() => [...PROMPTS_DATA, ...customPrompts], [customPrompts]);
+  const allTemplates = useMemo(() => [...INITIAL_TEMPLATES, ...customTemplates], [customTemplates]);
 
   const contributorsList = useMemo(() => {
     const contributors = new Set(allPrompts.map(p => p.contributor));
@@ -247,39 +276,66 @@ const App: React.FC = () => {
       : allPrompts;
 
     list = list.filter(p => {
-      const matchesSearch = p.act.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            p.prompt.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
+      const matchesType = activeType === 'All' || p.type === activeType;
       const matchesContributor = selectedContributor === 'All' || p.contributor === selectedContributor;
-      const matchesTags = activeTags.length === 0 || activeTags.every(tag => p.tags.includes(tag));
-      
-      return matchesSearch && matchesCategory && matchesContributor && matchesTags;
+      const matchesTagsFilter = activeTags.length === 0 || activeTags.every(tag => p.tags.includes(tag));
+      return matchesCategory && matchesType && matchesContributor && matchesTagsFilter;
     });
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      return list.map(p => {
+        let score = 0;
+        if (p.act.toLowerCase() === q) score += 100; // Exact Name Match
+        else if (p.act.toLowerCase().includes(q)) score += 50; // Partial Name Match
+        
+        const tagMatchCount = p.tags.filter(t => t.toLowerCase() === q).length;
+        score += tagMatchCount * 30; // Exact Tag Match
+        
+        if (p.prompt.toLowerCase().includes(q)) score += 10; // Prompt Content Match
+        
+        return { p, score };
+      })
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.p);
+    }
 
     return list.sort((a, b) => {
       if (sortOrder === 'name') return a.act.localeCompare(b.act);
       return 0;
     });
-  }, [allPrompts, favorites, view, searchQuery, activeCategory, selectedContributor, activeTags, sortOrder]);
+  }, [allPrompts, favorites, view, searchQuery, activeCategory, activeType, selectedContributor, activeTags, sortOrder]);
 
   const filteredHistory = useMemo(() => {
-    if (!searchQuery) return chatHistory;
-    return chatHistory.filter(session => 
-      session.personaName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      session.messages.some(m => m.text.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
-  }, [chatHistory, searchQuery]);
+    let list = [...chatHistory];
+    if (historySearchQuery.trim()) {
+      const q = historySearchQuery.toLowerCase();
+      list = list.filter(s => 
+        s.personaName.toLowerCase().includes(q) || 
+        s.messages.some(m => m.text.toLowerCase().includes(q))
+      );
+    }
+
+    return list.sort((a, b) => {
+      if (historySortOrder === 'recent') return b.lastUpdateTime - a.lastUpdateTime;
+      if (historySortOrder === 'name') return a.personaName.localeCompare(b.personaName);
+      if (historySortOrder === 'model') return (a.modelId || '').localeCompare(b.modelId || '');
+      return 0;
+    });
+  }, [chatHistory, historySearchQuery, historySortOrder]);
 
   // --- ACTIONS ---
 
   const handleSelectPrompt = (prompt: PromptItem) => {
     setSelectedPrompt(prompt);
-    setMessages([]);
     setIsChatOpen(false);
     setCurrentSession(null);
     setSecondarySession(null);
     setIsCompareMode(false);
     setSelectedDoc(null);
+    setGeneratedImageUrl(null);
   };
 
   const toggleFavorite = (id: string, e?: React.MouseEvent) => {
@@ -299,7 +355,37 @@ const App: React.FC = () => {
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    setTimeout(() => setCopiedId(curr => curr === id ? null : curr), 5000);
+  };
+
+  const dismissCopied = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCopiedId(null);
+  };
+
+  const handleImportPersona = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (json.act && json.prompt) {
+          const newPersona: PromptItem = {
+            ...json,
+            id: json.id || crypto.randomUUID(),
+            isCustom: true,
+            contributor: json.contributor || 'Imported'
+          };
+          setCustomPrompts(prev => [newPersona, ...prev.filter(p => p.id !== newPersona.id)]);
+          alert('Persona node integrated successfully.');
+        }
+      } catch (err) {
+        alert('Integrity check failed: Invalid Persona JSON.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const initSession = (prompt: PromptItem, config: SimulationSettings, idSuffix: string = '') => {
@@ -323,35 +409,32 @@ const App: React.FC = () => {
   const startChat = () => {
     if (!selectedPrompt) return;
     setIsChatOpen(true);
-    
-    // Primary Session
     const primary = initSession(selectedPrompt, settings);
     chatRef.current = primary.chatInstance;
     setCurrentSession(primary.session);
-    setMessages(primary.session.messages); // Legacy state sync for simple view
-    
-    // Comparison Session
     if (isCompareMode) {
       const secondary = initSession(selectedPrompt, secondarySettings, '-compare');
       secondaryChatRef.current = secondary.chatInstance;
       setSecondarySession(secondary.session);
-    } else {
-      secondaryChatRef.current = null;
-      setSecondarySession(null);
     }
+  };
+
+  const startImageSynthesis = async () => {
+    if (!selectedPrompt) return;
+    setIsGeneratingImage(true);
+    const result = await geminiService.generateImage(selectedPrompt.prompt);
+    if (result) setGeneratedImageUrl(result);
+    else alert("Multimodal Synthesis Failed. Check API quota.");
+    setIsGeneratingImage(false);
   };
 
   const resumeSession = (session: ChatSession) => {
     const prompt = allPrompts.find(p => p.id === session.personaId);
     if (!prompt) return;
     setSelectedPrompt(prompt);
-    
-    // Resume is simple mode only for now
     setIsCompareMode(false); 
     setCurrentSession(session);
-    setMessages(session.messages);
     setIsChatOpen(true);
-    
     chatRef.current = geminiService.createChat(prompt.prompt, settings);
   };
 
@@ -371,7 +454,6 @@ const App: React.FC = () => {
                     `Date: ${new Date(session.startTime).toLocaleString()}\n` +
                     `Model: ${session.modelId || 'Unknown'}\n\n` +
                     session.messages.map(m => `**${m.role.toUpperCase()}**: ${m.text}`).join('\n\n');
-    
     const blob = new Blob([content], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -385,191 +467,146 @@ const App: React.FC = () => {
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !chatRef.current || isLoading || !currentSession) return;
-
-    const userMessage: Message = {
-      role: 'user',
-      text: inputValue,
-      timestamp: Date.now()
-    };
-
+    const userMessage: Message = { role: 'user', text: inputValue, timestamp: Date.now() };
     setIsLoading(true);
     setInputValue('');
 
-    // Update UI immediately
-    const updateSessionWithUserMsg = (sess: ChatSession) => ({
-      ...sess,
-      messages: [...sess.messages, userMessage],
-      lastUpdateTime: Date.now()
-    });
-
-    const nextPrimarySession = updateSessionWithUserMsg(currentSession);
-    setCurrentSession(nextPrimarySession);
-    setMessages(nextPrimarySession.messages);
-
-    let nextSecondarySession = null;
+    const updateSess = (sess: ChatSession) => ({ ...sess, messages: [...sess.messages, userMessage], lastUpdateTime: Date.now() });
+    const nextPrimary = updateSess(currentSession);
+    setCurrentSession(nextPrimary);
+    let nextSecondary = null;
     if (isCompareMode && secondarySession) {
-      nextSecondarySession = updateSessionWithUserMsg(secondarySession);
-      setSecondarySession(nextSecondarySession);
+      nextSecondary = updateSess(secondarySession);
+      setSecondarySession(nextSecondary);
     }
 
-    // Parallel API Calls
     try {
       const promises = [geminiService.sendMessage(chatRef.current, userMessage.text)];
-      if (isCompareMode && secondaryChatRef.current) {
-        promises.push(geminiService.sendMessage(secondaryChatRef.current, userMessage.text));
-      }
-
+      if (isCompareMode && secondaryChatRef.current) promises.push(geminiService.sendMessage(secondaryChatRef.current, userMessage.text));
       const results = await Promise.all(promises);
-      
-      const updateSessionWithModelMsg = (sess: ChatSession, text: string) => ({
-        ...sess,
-        messages: [...sess.messages, { role: 'model', text, timestamp: Date.now() } as Message],
-        lastUpdateTime: Date.now()
-      });
-
-      const finalPrimary = updateSessionWithModelMsg(nextPrimarySession, results[0]);
+      const updateModelMsg = (sess: ChatSession, text: string) => ({ ...sess, messages: [...sess.messages, { role: 'model', text, timestamp: Date.now() } as Message], lastUpdateTime: Date.now() });
+      const finalPrimary = updateModelMsg(nextPrimary, results[0]);
       setCurrentSession(finalPrimary);
-      setMessages(finalPrimary.messages);
-
-      if (isCompareMode && nextSecondarySession && results[1]) {
-        const finalSecondary = updateSessionWithModelMsg(nextSecondarySession, results[1]);
-        setSecondarySession(finalSecondary);
-      }
-
-      // Save to History (Primary only for now to avoid clutter, or could save both)
-      setChatHistory(prev => {
-        // Remove existing if present
-        const others = prev.filter(s => s.id !== finalPrimary.id);
-        return [finalPrimary, ...others];
-      });
-
+      if (isCompareMode && nextSecondary && results[1]) setSecondarySession(updateModelMsg(nextSecondary, results[1]));
+      setChatHistory(prev => [finalPrimary, ...prev.filter(s => s.id !== finalPrimary.id)]);
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'model', text: "Error: Simulation failed.", timestamp: Date.now() }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ... [Prompt Editor Functions] ...
+  // --- EDITOR LOGIC ---
+
   const openPromptEditor = (prompt?: PromptItem) => {
-    setEditingPrompt(prompt ? { ...prompt } : {
-      id: crypto.randomUUID(),
-      act: '',
-      prompt: '',
-      description: '',
-      contributor: 'User',
-      tags: [],
-      category: 'Miscellaneous',
-      type: 'TEXT',
-      for_devs: false,
-      isCustom: true
-    });
+    const initialState = prompt ? { ...prompt } : {
+      id: crypto.randomUUID(), act: '', prompt: '', description: '', contributor: 'User', tags: [], category: 'Miscellaneous', type: 'TEXT', for_devs: false, isCustom: true, versions: []
+    };
+    setEditingPrompt(initialState);
+    setEditorHistory([initialState]);
+    setHistoryIndex(0);
     setIsEditorOpen(true);
+  };
+
+  const updateEditingState = (update: Partial<PromptItem>) => {
+    setEditingPrompt(prev => {
+      const next = { ...prev, ...update } as PromptItem;
+      const newHistory = editorHistory.slice(0, historyIndex + 1);
+      newHistory.push(next);
+      setEditorHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+      return next;
+    });
+  };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const nextIndex = historyIndex - 1;
+      setHistoryIndex(nextIndex);
+      setEditingPrompt(editorHistory[nextIndex]);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < editorHistory.length - 1) {
+      const nextIndex = historyIndex + 1;
+      setHistoryIndex(nextIndex);
+      setEditingPrompt(editorHistory[nextIndex]);
+    }
   };
 
   const savePrompt = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPrompt) return;
-    const p = editingPrompt as PromptItem;
-    if (p.isCustom || !PROMPTS_DATA.find(orig => orig.id === p.id)) {
-      setCustomPrompts(prev => {
-        const index = prev.findIndex(item => item.id === p.id);
-        if (index > -1) {
-          const next = [...prev];
-          next[index] = p;
-          return next;
-        }
-        return [p, ...prev];
-      });
-    } else {
-      setCustomPrompts(prev => [...prev.filter(item => item.id !== p.id), p]);
+    const p = { ...editingPrompt } as PromptItem;
+    const oldVersion = allPrompts.find(item => item.id === p.id);
+    if (oldVersion && (oldVersion.prompt !== p.prompt || oldVersion.act !== p.act)) {
+      const versionRecord: PersonaVersion = { timestamp: Date.now(), prompt: oldVersion.prompt, description: oldVersion.description, act: oldVersion.act };
+      p.versions = [...(oldVersion.versions || []), versionRecord];
     }
+    setCustomPrompts(prev => [p, ...prev.filter(item => item.id !== p.id)]);
     setIsEditorOpen(false);
     setSelectedPrompt(p);
   };
 
-  const deletePrompt = (id: string) => {
-    setCustomPrompts(prev => prev.filter(p => p.id !== id));
-    if (selectedPrompt?.id === id) setSelectedPrompt(null);
+  const saveAsTemplate = () => {
+    if (!editingPrompt) return;
+    const newTemplate = {
+      name: editingPrompt.act || 'New Template',
+      act: editingPrompt.act,
+      category: editingPrompt.category,
+      tags: editingPrompt.tags,
+      description: editingPrompt.description,
+      prompt: editingPrompt.prompt
+    };
+    setCustomTemplates(prev => [...prev, newTemplate]);
+    alert('Persona saved as a template successfully.');
   };
 
-  const exportPromptAsJson = () => {
+  const revertToVersion = (version: PersonaVersion) => {
     if (!editingPrompt) return;
-    const jsonString = JSON.stringify(editingPrompt, null, 2);
-    const blob = new Blob([jsonString], { type: "application/json" });
+    updateEditingState({ prompt: version.prompt, act: version.act, description: version.description });
+  };
+
+  const exportPromptAsJson = (item: Partial<PromptItem>) => {
+    const blob = new Blob([JSON.stringify(item, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${(editingPrompt.act || "untitled_persona").replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
-    document.body.appendChild(link);
+    link.download = `${(item.act || "persona").replace(/[^a-z0-9]/gi, '_')}.json`;
     link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  };
+
+  const handleShare = async (item: PromptItem) => {
+    const shareData = { title: `PromptForge: ${item.act}`, text: item.description || item.prompt.slice(0, 100), url: window.location.href };
+    if (navigator.share) await navigator.share(shareData);
+    else { navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`); alert('Share info copied!'); }
   };
 
   const applyTemplate = (template: any) => {
-    setEditingPrompt(prev => ({
-      ...prev,
-      act: template.act,
-      category: template.category,
-      prompt: template.prompt,
-      description: template.description,
-      tags: template.tags
-    }));
+    updateEditingState({ act: template.act, category: template.category, prompt: template.prompt, description: template.description, tags: template.tags });
   };
 
-  const ImagePreview = ({ promptText, compact = false }: { promptText: string, compact?: boolean }) => {
-    const seed = useMemo(() => {
-      let hash = 0;
-      for (let i = 0; i < promptText.length; i++) {
-        hash = promptText.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      return Math.abs(hash);
-    }, [promptText]);
-
-    const previewUrl = `https://picsum.photos/seed/${seed}/${compact ? '400/225' : '800/450'}`;
-    return (
-      <div className={`relative w-full aspect-video rounded-3xl overflow-hidden bg-[var(--bg-element)] border border-[var(--border)] shadow-xl group transition-all duration-500`}>
-        <img src={previewUrl} alt="Visual Preview" className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-app)]/80 to-transparent flex flex-col justify-end p-6">
-          <div className="flex items-center gap-2 text-[var(--accent)] mb-1">
-            <ImageIcon size={compact ? 14 : 18} />
-            <span className={`${compact ? 'text-[8px]' : 'text-xs'} font-bold uppercase tracking-widest`}>Real-time Interpretation</span>
-          </div>
-          {!compact && <p className="text-[10px] text-[var(--text-muted)] italic font-mono uppercase tracking-tighter">Visualizing instruction vector...</p>}
-        </div>
-      </div>
-    );
-  };
-
-  const toggleCompareMode = () => {
-    setIsCompareMode(!isCompareMode);
-  };
-
-  const openSettings = (target: 'primary' | 'secondary') => {
-    setSettingsTarget(target);
-    setIsSettingsOpen(true);
-  };
-
+  const toggleCompareMode = () => setIsCompareMode(!isCompareMode);
+  const openSettings = (target: 'primary' | 'secondary') => { setSettingsTarget(target); setIsSettingsOpen(true); };
   const activeSettingsToEdit = settingsTarget === 'primary' ? settings : secondarySettings;
   const setSettingsToEdit = settingsTarget === 'primary' ? setSettings : setSecondarySettings;
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-body)] transition-colors duration-300">
-      {/* Left Sidebar */}
+      {/* Sidebar */}
       <div className={`flex flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]/50 transition-all duration-300 ${selectedPrompt || selectedDoc ? 'w-80 hidden lg:flex' : 'w-full lg:w-96'}`}>
         <div className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)]">
-                <Zap size={24} />
-              </div>
-              <h1 className="text-xl font-bold tracking-tight text-[var(--text-heading)]">PromptForge</h1>
+              <div className="p-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)]"><Zap size={24} /></div>
+              <h1 className="text-xl font-bold text-[var(--text-heading)]">PromptForge</h1>
             </div>
-            <button onClick={() => openPromptEditor()} className="p-2 rounded-xl bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 transition-all" title="Add Custom Prompt">
-              <Plus size={20} />
-            </button>
+            <div className="flex gap-2">
+              <input type="file" ref={fileInputRef} onChange={handleImportPersona} className="hidden" accept=".json" />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--accent)] transition-all"><Upload size={20} /></button>
+              <button onClick={() => openPromptEditor()} className="p-2 rounded-xl bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 transition-all"><Plus size={20} /></button>
+            </div>
           </div>
           
           <div className="flex gap-1 p-1 bg-[var(--bg-element)] rounded-xl overflow-x-auto no-scrollbar">
@@ -584,53 +621,51 @@ const App: React.FC = () => {
             ))}
           </div>
 
-          {view !== 'docs' && (
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--accent)] transition-colors" size={18} />
-              <input type="text" placeholder={`Search ${view}...`} className="w-full pl-10 pr-4 py-2 rounded-xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50 transition-all text-sm placeholder:text-[var(--text-muted)] text-[var(--text-body)]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          {(view === 'library' || view === 'favorites') && (
+            <div className="space-y-4 overflow-y-auto no-scrollbar max-h-[60vh]">
+              <div className="relative group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
+                <input type="text" placeholder="Search by name, tag, or content..." className="w-full pl-10 pr-4 py-2 rounded-xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all text-sm text-[var(--text-body)]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2"><Filter size={10} /> Category</label>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  <button onClick={() => setActiveCategory('All')} className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all border ${activeCategory === 'All' ? 'bg-[var(--accent)] border-[var(--accent)] text-white' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>All</button>
+                  {CATEGORIES.map(cat => <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all border whitespace-nowrap ${activeCategory === cat ? 'bg-[var(--accent)] border-[var(--accent)] text-white' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>{cat}</button>)}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2"><Layers size={10} /> Persona Type</label>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  <button onClick={() => setActiveType('All')} className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all border ${activeType === 'All' ? 'bg-[var(--accent)] border-[var(--accent)] text-white' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>All</button>
+                  {TYPES.map(t => <button key={t} onClick={() => setActiveType(t)} className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all border whitespace-nowrap ${activeType === t ? 'bg-[var(--accent)] border-[var(--accent)] text-white' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>{t}</button>)}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-[var(--border)]/50 mt-2">
+                 <div className="flex items-center gap-2 bg-[var(--bg-element)]/50 p-2 rounded-xl border border-[var(--border)]/50 flex-1">
+                  <Users size={14} className="text-[var(--text-muted)]" />
+                  <select className="flex-1 bg-transparent text-[10px] font-bold uppercase text-[var(--text-muted)] outline-none cursor-pointer" value={selectedContributor} onChange={(e) => setSelectedContributor(e.target.value)}>
+                    {contributorsList.map(c => <option key={c} value={c} className="bg-[var(--bg-panel)]">By: {c}</option>)}
+                  </select>
+                </div>
+                <button onClick={() => setSortOrder(prev => prev === 'name' ? 'recent' : 'name')} className="p-2 rounded-xl bg-[var(--bg-element)] border border-[var(--border)] text-[var(--text-muted)] transition-colors"><SortAsc size={14} /></button>
+              </div>
             </div>
           )}
 
-          {(view === 'library' || view === 'favorites') && (
+          {view === 'history' && (
             <div className="space-y-4">
-              <div className="flex flex-col gap-2">
-                 {/* Categories Row */}
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                  <button onClick={() => setActiveCategory('All')} className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${activeCategory === 'All' ? 'bg-[var(--accent)] border-[var(--accent)] text-white' : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'}`}>All</button>
-                  {CATEGORIES.map(cat => (
-                    <button key={cat} onClick={() => setActiveCategory(cat)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border whitespace-nowrap ${activeCategory === cat ? 'bg-[var(--accent)] border-[var(--accent)] text-white' : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'}`}>
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-                
-                {/* Advanced Filters: Sort & Contributor */}
-                <div className="flex gap-2">
-                   <div className="flex items-center gap-2 bg-[var(--bg-element)]/50 p-2 rounded-xl border border-[var(--border)]/50 flex-1">
-                    <Users size={14} className="text-[var(--text-muted)]" />
-                    <select className="flex-1 bg-transparent text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] outline-none cursor-pointer w-full" value={selectedContributor} onChange={(e) => setSelectedContributor(e.target.value)}>
-                      {contributorsList.map(c => <option key={c} value={c} className="bg-[var(--bg-panel)] text-[var(--text-body)]">By: {c}</option>)}
-                    </select>
-                  </div>
-                  <button onClick={() => setSortOrder(prev => prev === 'name' ? 'recent' : 'name')} className="p-2 rounded-xl bg-[var(--bg-element)]/50 border border-[var(--border)]/50 text-[var(--text-muted)] hover:text-[var(--text-body)] transition-colors" title="Toggle Sort Order">
-                    <SortAsc size={14} className={sortOrder === 'recent' ? "rotate-180 transition-transform" : "transition-transform"} />
-                  </button>
-                </div>
-              
-                {/* Tag Cloud */}
-                {allTags.length > 0 && (
-                   <div className="flex gap-2 overflow-x-auto no-scrollbar pt-1">
-                     {allTags.map(tag => (
-                       <button 
-                         key={tag} 
-                         onClick={() => toggleTag(tag)}
-                         className={`px-2 py-1 rounded-md text-[9px] font-mono border transition-all whitespace-nowrap flex items-center gap-1 ${activeTags.includes(tag) ? 'bg-[var(--accent)]/20 border-[var(--accent)]/50 text-[var(--accent)]' : 'bg-[var(--bg-element)]/30 border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'}`}
-                       >
-                         <Tag size={8} /> {tag}
-                       </button>
-                     ))}
-                   </div>
-                )}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={16} />
+                <input type="text" placeholder="Search history..." className="w-full pl-10 pr-4 py-2 rounded-xl bg-[var(--bg-element)] border border-[var(--border)] text-sm" value={historySearchQuery} onChange={(e) => setHistorySearchQuery(e.target.value)} />
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                <button onClick={() => setHistorySortOrder('recent')} className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase border whitespace-nowrap ${historySortOrder === 'recent' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>Recent</button>
+                <button onClick={() => setHistorySortOrder('name')} className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase border whitespace-nowrap ${historySortOrder === 'name' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>Persona</button>
+                <button onClick={() => setHistorySortOrder('model')} className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase border whitespace-nowrap ${historySortOrder === 'model' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>Model</button>
               </div>
             </div>
           )}
@@ -638,75 +673,44 @@ const App: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-2">
           {view === 'history' ? (
-            <div className="space-y-2">
-              <div className="flex justify-between items-center px-2 mb-2">
-                <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Active Sessions ({filteredHistory.length})</span>
-                {chatHistory.length > 0 && (
-                  <button onClick={() => setIsClearHistoryConfirmOpen(true)} className="text-[10px] text-red-400 hover:text-red-300 transition-colors font-bold uppercase flex items-center gap-1">
-                    <Trash2 size={10} /> Clear All
-                  </button>
-                )}
-              </div>
-              {filteredHistory.length > 0 ? (
-                filteredHistory.map(session => (
-                  <div key={session.id} className="group relative">
-                    <button onClick={() => resumeSession(session)} className="w-full text-left p-4 rounded-2xl border border-transparent bg-[var(--bg-element)]/40 hover:border-[var(--border)] hover:bg-[var(--bg-element)] transition-all pr-16">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-[var(--text-heading)] text-sm line-clamp-1">{session.personaName}</span>
-                      </div>
-                      <div className="flex items-center gap-2 mb-1.5">
-                         <span className="text-[10px] font-mono text-[var(--text-muted)]">{new Date(session.lastUpdateTime).toLocaleDateString()}</span>
-                         <span className="w-1 h-1 rounded-full bg-[var(--text-muted)]"></span>
-                         <span className="text-[10px] font-mono text-[var(--accent)]">{session.messages.length} msgs</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-muted)] line-clamp-1 italic">{session.messages[session.messages.length - 1]?.text}</p>
-                    </button>
-                    {/* Hover Actions for Session */}
-                    <div className="absolute right-2 top-2 bottom-2 flex flex-col justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={(e) => downloadSession(e, session)} className="p-1.5 rounded-lg bg-[var(--bg-element-hover)] text-[var(--text-muted)] hover:bg-[var(--accent)] hover:text-white transition-colors" title="Export Transcript">
-                        <FileDown size={14} />
-                      </button>
-                      <button onClick={(e) => deleteSession(e, session.id)} className="p-1.5 rounded-lg bg-[var(--bg-element-hover)] text-[var(--text-muted)] hover:bg-red-600 hover:text-white transition-colors" title="Delete Session">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+             filteredHistory.map(session => (
+              <div key={session.id} className="group relative">
+                <button onClick={() => resumeSession(session)} className="w-full text-left p-4 rounded-2xl border border-transparent bg-[var(--bg-element)]/40 hover:border-[var(--border)] hover:bg-[var(--bg-element)] transition-all pr-16">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-bold text-[var(--text-heading)] text-sm line-clamp-1">{session.personaName}</span>
                   </div>
-                ))
-              ) : (
-                <div className="py-20 text-center opacity-30 flex flex-col items-center">
-                  <History size={48} className="mb-2" />
-                  <p className="text-sm font-mono">Archive Empty</p>
+                  <div className="flex items-center gap-2 mb-1.5">
+                     <span className="text-[10px] font-mono text-[var(--text-muted)]">{new Date(session.lastUpdateTime).toLocaleDateString()}</span>
+                     <span className="text-[10px] font-mono text-[var(--accent)]">{session.modelId}</span>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] line-clamp-1 italic">{session.messages[session.messages.length - 1]?.text}</p>
+                </button>
+                <div className="absolute right-2 top-2 bottom-2 flex flex-col justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={(e) => downloadSession(e, session)} className="p-1.5 rounded-lg bg-[var(--bg-element-hover)] text-[var(--text-muted)] hover:bg-[var(--accent)] hover:text-white transition-colors"><FileDown size={14} /></button>
+                  <button onClick={(e) => deleteSession(e, session.id)} className="p-1.5 rounded-lg bg-[var(--bg-element-hover)] text-[var(--text-muted)] hover:bg-red-600 hover:text-white transition-colors"><Trash2 size={14} /></button>
                 </div>
-              )}
-            </div>
+              </div>
+            ))
           ) : view === 'docs' ? (
-            <div className="space-y-2">
-               {Object.keys(DOCUMENTATION_CONTENT).map(fileName => (
-                 <button key={fileName} onClick={() => { setSelectedDoc(fileName); setSelectedPrompt(null); }} className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedDoc === fileName ? 'bg-[var(--accent)]/10 border-[var(--accent)]/50' : 'bg-[var(--bg-element)]/40 border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-element)]'}`}>
-                   <div className="flex items-center gap-3">
-                     <FileText size={16} className="text-[var(--accent)]" />
-                     <span className="text-sm font-medium text-[var(--text-heading)]">{fileName}</span>
-                   </div>
-                 </button>
-               ))}
-            </div>
+            Object.keys(DOCUMENTATION_CONTENT).map(fileName => (
+              <button key={fileName} onClick={() => { setSelectedDoc(fileName); setSelectedPrompt(null); }} className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedDoc === fileName ? 'bg-[var(--accent)]/10 border-[var(--accent)]/50' : 'bg-[var(--bg-element)]/40 border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-element)]'}`}>
+                <div className="flex items-center gap-3">
+                  <FileText size={16} className="text-[var(--accent)]" />
+                  <span className="text-sm font-medium text-[var(--text-heading)]">{fileName}</span>
+                </div>
+              </button>
+            ))
           ) : (
             filteredPrompts.map(p => (
               <button key={p.id} onClick={() => handleSelectPrompt(p)} className={`w-full text-left p-4 rounded-2xl border transition-all group relative ${selectedPrompt?.id === p.id ? 'bg-[var(--accent)]/10 border-[var(--accent)]/50' : 'bg-[var(--bg-element)]/40 border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-element)]'}`}>
                 <div className="flex justify-between items-start mb-2">
                   <span className="font-semibold text-[var(--text-heading)] group-hover:text-[var(--accent)] transition-colors pr-6">{p.act}</span>
-                  <div className="flex items-center gap-2">
-                    <button onClick={(e) => toggleFavorite(p.id, e)} className={`transition-colors ${favorites.has(p.id) ? 'text-amber-400' : 'text-[var(--text-muted)] hover:text-[var(--text-body)]'}`}>
-                      <Star size={14} fill={favorites.has(p.id) ? "currentColor" : "none"} />
-                    </button>
-                  </div>
+                  <button onClick={(e) => toggleFavorite(p.id, e)} className={`transition-colors ${favorites.has(p.id) ? 'text-amber-400' : 'text-[var(--text-muted)] hover:text-[var(--text-body)]'}`}><Star size={14} fill={favorites.has(p.id) ? "currentColor" : "none"} /></button>
                 </div>
-                <p className="text-xs text-[var(--text-muted)] line-clamp-2 leading-relaxed mb-3">{p.description || p.prompt}</p>
+                <p className="text-xs text-[var(--text-muted)] line-clamp-2 mb-3">{p.description || p.prompt}</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase border border-[var(--border)] text-[var(--text-muted)]`}>{p.category}</span>
-                  {p.tags.slice(0, 2).map(t => (
-                    <span key={t} className="text-[9px] text-[var(--text-muted)] font-mono">#{t}</span>
-                  ))}
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase border border-[var(--border)] text-[var(--text-muted)]">{p.category}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase border border-[var(--border)] text-[var(--accent)]">{p.type}</span>
                 </div>
               </button>
             ))
@@ -714,222 +718,133 @@ const App: React.FC = () => {
         </div>
 
         <div className="p-4 border-t border-[var(--border)] bg-[var(--bg-panel)]/80 flex items-center gap-2">
-          <button onClick={() => setIsHelpOpen(true)} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--text-body)] hover:bg-[var(--bg-element-hover)] transition-all text-xs font-medium">
-            <HelpCircle size={14} /> Help
-          </button>
-          <button onClick={() => openSettings('primary')} className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--text-body)] hover:bg-[var(--bg-element-hover)] transition-all text-xs font-medium" title="Advanced Simulation Settings">
-            <Settings size={14} />
-          </button>
-          <button onClick={() => setIsFeedbackOpen(true)} className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--text-body)] hover:bg-[var(--bg-element-hover)] transition-all text-xs font-medium">
-            <MessageSquare size={14} />
-          </button>
+          <button onClick={() => setIsHelpOpen(true)} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--text-body)] transition-all text-xs font-medium"><HelpCircle size={14} /> Help</button>
+          <button onClick={() => openSettings('primary')} className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--text-body)] transition-all text-xs font-medium"><Settings size={14} /></button>
         </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <div className="flex-1 flex flex-col relative overflow-hidden bg-[var(--bg-app)]">
         {selectedDoc ? (
           <div className="flex-1 flex flex-col p-6 md:p-12 overflow-y-auto">
-            <div className="max-w-4xl w-full mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="flex items-center gap-4 mb-8">
-                  <button onClick={() => setSelectedDoc(null)} className="lg:hidden p-2 rounded-full hover:bg-[var(--bg-element)] text-[var(--text-muted)]">
-                    <ArrowLeft size={20} />
-                  </button>
-                  <h2 className="text-3xl font-black text-[var(--text-heading)]">{selectedDoc}</h2>
-               </div>
-               <div className="prose prose-invert max-w-none bg-[var(--bg-panel)]/50 border border-[var(--border)] p-10 rounded-[3rem] shadow-2xl">
-                  <pre className="text-[var(--text-body)] whitespace-pre-wrap font-sans leading-relaxed text-lg">
-                    {DOCUMENTATION_CONTENT[selectedDoc as keyof typeof DOCUMENTATION_CONTENT]}
-                  </pre>
-               </div>
-            </div>
+             <div className="max-w-4xl w-full mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center gap-4 mb-8">
+                   <button onClick={() => setSelectedDoc(null)} className="lg:hidden p-2 rounded-full hover:bg-[var(--bg-element)] text-[var(--text-muted)]"><ArrowLeft size={20} /></button>
+                   <h2 className="text-3xl font-black text-[var(--text-heading)]">{selectedDoc}</h2>
+                </div>
+                <div className="prose prose-invert max-w-none bg-[var(--bg-panel)]/50 border border-[var(--border)] p-10 rounded-[3rem] shadow-2xl">
+                   <pre className="text-[var(--text-body)] whitespace-pre-wrap font-sans leading-relaxed text-lg">{DOCUMENTATION_CONTENT[selectedDoc as keyof typeof DOCUMENTATION_CONTENT]}</pre>
+                </div>
+             </div>
           </div>
         ) : selectedPrompt ? (
           <>
             {!isChatOpen ? (
               <div className="flex-1 flex flex-col items-center justify-start p-6 md:p-12 overflow-y-auto">
                 <div className="max-w-4xl w-full space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => setSelectedPrompt(null)} className="lg:hidden p-2 rounded-full hover:bg-[var(--bg-element)]">
-                      <ArrowLeft size={20} />
-                    </button>
+                   <div className="flex items-center gap-4">
+                    <button onClick={() => setSelectedPrompt(null)} className="lg:hidden p-2 rounded-full hover:bg-[var(--bg-element)]"><ArrowLeft size={20} /></button>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <h2 className="text-3xl font-extrabold text-[var(--text-heading)] leading-tight">{selectedPrompt.act}</h2>
-                          <button onClick={() => toggleFavorite(selectedPrompt.id)}>
-                             <Star size={24} className={favorites.has(selectedPrompt.id) ? "text-amber-400 fill-amber-400" : "text-[var(--text-muted)]"} />
-                          </button>
+                          <h2 className="text-3xl font-extrabold text-[var(--text-heading)]">{selectedPrompt.act}</h2>
+                          <button onClick={() => toggleFavorite(selectedPrompt.id)}><Star size={24} className={favorites.has(selectedPrompt.id) ? "text-amber-400 fill-amber-400" : "text-[var(--text-muted)]"} /></button>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => openPromptEditor(selectedPrompt)} className="p-2.5 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--text-heading)] border border-[var(--border)] transition-all">
-                            <Edit size={20} />
-                          </button>
-                          {(selectedPrompt.isCustom || !PROMPTS_DATA.find(x => x.id === selectedPrompt.id)) && (
-                            <button onClick={() => deletePrompt(selectedPrompt.id)} className="p-2.5 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border border-red-500/20 transition-all">
-                              <Trash2 size={20} />
-                            </button>
-                          )}
+                          <button onClick={() => handleShare(selectedPrompt)} className="p-2.5 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--accent)] border border-[var(--border)] transition-all"><Share2 size={20} /></button>
+                          <button onClick={() => openPromptEditor(selectedPrompt)} className="p-2.5 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--text-heading)] border border-[var(--border)] transition-all"><Edit size={20} /></button>
                         </div>
                       </div>
-                      
                       <div className="flex flex-wrap items-center gap-4 mt-6 p-5 rounded-3xl bg-[var(--bg-panel)]/50 border border-[var(--border)]/50 backdrop-blur-sm">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
-                            <Users size={18} />
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-widest leading-none mb-1">Creator</span>
-                            <span className="text-xs text-[var(--text-body)] font-semibold">{selectedPrompt.contributor}</span>
-                          </div>
+                          <div className="p-2 rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]"><Users size={18} /></div>
+                          <div className="flex flex-col"><span className="text-[10px] text-[var(--text-muted)] font-bold uppercase mb-1">Creator</span><span className="text-xs text-[var(--text-body)] font-semibold">{selectedPrompt.contributor}</span></div>
                         </div>
                         <div className="h-10 w-px bg-[var(--border)] hidden md:block" />
                         <div className="flex-1 flex flex-wrap gap-2">
-                          {selectedPrompt.tags.map(tag => (
-                            <span key={tag} className="px-3 py-1 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] text-[10px] font-bold border border-[var(--border)] flex items-center gap-1.5 shadow-sm">
-                              <Hash size={10} className="text-[var(--text-muted)]" />
-                              {tag}
-                            </span>
-                          ))}
+                          {selectedPrompt.tags.map(tag => <span key={tag} className="px-3 py-1 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] text-[10px] font-bold border border-[var(--border)] flex items-center gap-1.5"><Hash size={10} /> {tag}</span>)}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {selectedPrompt.type === 'IMAGE' && (
-                    <ImagePreview promptText={selectedPrompt.prompt} />
-                  )}
-
-                  <div className="p-8 rounded-[2.5rem] bg-[var(--bg-panel)]/80 border border-[var(--border)] shadow-2xl relative group overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--accent)]/5 blur-3xl pointer-events-none" />
-                    <button 
-                      onClick={() => handleCopy(selectedPrompt.prompt, selectedPrompt.id)}
-                      className="absolute right-6 top-6 p-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--text-heading)] transition-all border border-[var(--border)]"
-                    >
-                      {copiedId === selectedPrompt.id ? <CheckCircle2 size={18} className="text-emerald-400" /> : <Copy size={18} />}
-                    </button>
-                    <h3 className="text-xs font-black text-[var(--text-muted)] uppercase tracking-[0.2em] mb-6">Instruction Vector</h3>
-                    <p className="text-xl text-[var(--text-body)] leading-relaxed font-serif whitespace-pre-wrap selection:bg-[var(--accent)]/30">
-                      {selectedPrompt.prompt}
-                    </p>
-                    {selectedPrompt.description && (
-                      <div className="mt-8 pt-6 border-t border-[var(--border)]/50">
-                        <h4 className="text-xs font-black text-[var(--text-muted)] uppercase tracking-[0.2em] mb-2">Contextual Data</h4>
-                        <p className="text-sm text-[var(--text-muted)] leading-relaxed">{selectedPrompt.description}</p>
+                  <div className="w-full">
+                    {generatedImageUrl ? (
+                      <div className="relative group rounded-[2.5rem] overflow-hidden border border-[var(--border)] shadow-2xl animate-in zoom-in duration-500">
+                        <img src={generatedImageUrl} alt="Synthesis Output" className="w-full aspect-square object-cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 flex flex-col justify-end p-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => { const link = document.createElement('a'); link.href = generatedImageUrl; link.download = 'artifact.png'; link.click(); }} className="p-4 rounded-2xl bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-all self-end"><Download size={24} /></button>
+                        </div>
+                        <button onClick={() => setGeneratedImageUrl(null)} className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black transition-colors"><RefreshCw size={18} /></button>
+                      </div>
+                    ) : isGeneratingImage ? (
+                      <div className="w-full aspect-square rounded-[2.5rem] bg-[var(--bg-element)] flex flex-col items-center justify-center border border-[var(--border)] animate-pulse">
+                        <div className="p-8 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] mb-6"><ImageIcon size={64} className="animate-bounce" /></div>
+                        <p className="text-xl font-black text-[var(--text-heading)] uppercase tracking-[0.2em]">Synthesizing Reality</p>
+                      </div>
+                    ) : (
+                      <div className="p-8 rounded-[2.5rem] bg-[var(--bg-panel)]/80 border border-[var(--border)] shadow-2xl relative group">
+                        <div className="absolute right-6 top-6 flex items-center gap-2">
+                           {copiedId === selectedPrompt.id ? (
+                             <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 border border-emerald-500/50 rounded-xl animate-in slide-in-from-right-2 fade-in duration-300">
+                                <CheckCircle2 size={16} className="text-emerald-400" />
+                                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Copied!</span>
+                                <button onClick={dismissCopied} className="p-1 rounded hover:bg-emerald-500/20 text-emerald-400 transition-colors"><X size={12} /></button>
+                             </div>
+                           ) : (
+                            <button onClick={() => handleCopy(selectedPrompt.prompt, selectedPrompt.id)} className="p-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--text-heading)] transition-all border border-[var(--border)]"><Copy size={18} /></button>
+                           )}
+                        </div>
+                        <h3 className="text-xs font-black text-[var(--text-muted)] uppercase tracking-[0.2em] mb-6">Instruction Vector</h3>
+                        <p className="text-xl text-[var(--text-body)] leading-relaxed font-serif whitespace-pre-wrap">{selectedPrompt.prompt}</p>
                       </div>
                     )}
                   </div>
 
-                  {/* Comparison Mode Toggle */}
                   <div className="p-5 rounded-3xl bg-[var(--bg-panel)]/50 border border-[var(--border)] flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400">
-                        <SplitSquareHorizontal size={20} />
-                      </div>
+                      <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400"><SplitSquareHorizontal size={20} /></div>
                       <div>
-                        <h4 className="text-sm font-bold text-[var(--text-heading)]">Compare Models</h4>
-                        <p className="text-xs text-[var(--text-muted)]">Run this persona against two different Gemini configurations.</p>
+                        <h4 className="text-sm font-bold text-[var(--text-heading)]">Dual Simulation</h4>
+                        <p className="text-xs text-[var(--text-muted)]">Run side-by-side with two distinct configurations.</p>
                       </div>
                     </div>
-                    <button 
-                      onClick={toggleCompareMode}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-                        isCompareMode 
-                        ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' 
-                        : 'bg-[var(--bg-element)] text-[var(--text-muted)] hover:bg-[var(--bg-element-hover)]'
-                      }`}
-                    >
-                      {isCompareMode ? 'Comparison Active' : 'Enable Comparison'}
-                    </button>
+                    <button onClick={toggleCompareMode} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${isCompareMode ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-[var(--bg-element)] text-[var(--text-muted)] hover:bg-[var(--bg-element-hover)]'}`}>{isCompareMode ? 'Comparison On' : 'Compare Mode'}</button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-20">
-                    <button onClick={startChat} className="flex items-center justify-center gap-4 px-8 py-5 rounded-[2rem] bg-[var(--accent)] text-white font-black uppercase tracking-widest hover:bg-[var(--accent-hover)] active:scale-95 transition-all shadow-xl shadow-[var(--accent)]/30">
-                      <Terminal size={22} /> Initiate Simulation
-                    </button>
-                    <button onClick={() => handleCopy(selectedPrompt.prompt, selectedPrompt.id)} className="flex items-center justify-center gap-4 px-8 py-5 rounded-[2rem] bg-[var(--bg-element)] text-[var(--text-heading)] font-black uppercase tracking-widest hover:bg-[var(--bg-element-hover)] active:scale-95 transition-all border border-[var(--border)]">
-                      <Copy size={22} /> Export Logic
-                    </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-20 w-full">
+                    {selectedPrompt.category === 'AI Art Generation' || selectedPrompt.type === 'IMAGE' ? (
+                      <button onClick={startImageSynthesis} disabled={isGeneratingImage} className="flex items-center justify-center gap-4 px-8 py-5 rounded-[2rem] bg-amber-500 text-white font-black uppercase tracking-widest hover:bg-amber-600 active:scale-95 transition-all shadow-xl shadow-amber-500/30"><ImageIcon size={22} /> {isGeneratingImage ? 'Synthesizing...' : 'Forge Multimodal Art'}</button>
+                    ) : (
+                      <button onClick={startChat} className="flex items-center justify-center gap-4 px-8 py-5 rounded-[2rem] bg-[var(--accent)] text-white font-black uppercase tracking-widest hover:bg-[var(--accent-hover)] active:scale-95 transition-all shadow-xl shadow-[var(--accent)]/30"><Terminal size={22} /> Initiate Simulation</button>
+                    )}
+                    <button onClick={() => exportPromptAsJson(selectedPrompt)} className="flex items-center justify-center gap-4 px-8 py-5 rounded-[2rem] bg-[var(--bg-element)] text-[var(--text-heading)] font-black uppercase tracking-widest hover:bg-[var(--bg-element-hover)] active:scale-95 transition-all border border-[var(--border)]"><Download size={22} /> Export Node</button>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="flex-1 flex flex-col h-full bg-[var(--bg-app)]/40">
-                {/* Chat Header */}
                 <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg-panel)]/90 backdrop-blur-md sticky top-0 z-10">
                   <div className="flex items-center gap-4">
-                    <button onClick={() => setIsChatOpen(false)} className="p-2 rounded-full hover:bg-[var(--bg-element)] text-[var(--text-muted)] transition-colors">
-                      <ArrowLeft size={20} />
-                    </button>
+                    <button onClick={() => setIsChatOpen(false)} className="p-2 rounded-full hover:bg-[var(--bg-element)] text-[var(--text-muted)]"><ArrowLeft size={20} /></button>
                     <div>
-                      <h3 className="text-lg font-bold text-[var(--text-heading)] leading-none">{selectedPrompt.act}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-[var(--accent)] font-mono tracking-tighter uppercase">Persona Live Simulation</span>
-                        {isCompareMode && <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded uppercase font-bold">Split View</span>}
-                      </div>
+                      <h3 className="text-lg font-bold text-[var(--text-heading)]">{selectedPrompt.act}</h3>
+                      <div className="flex items-center gap-2 mt-1"><span className="text-[10px] text-[var(--accent)] font-mono tracking-tighter uppercase">Persona Live Simulation</span></div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {/* Primary Settings Button */}
-                    <button onClick={() => openSettings('primary')} className="px-3 py-1 rounded-full bg-[var(--bg-element)] border border-[var(--border)] text-[10px] font-medium text-[var(--text-muted)] flex items-center gap-1.5 hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
-                      <Cpu size={12} />
-                      {settings.model}
-                    </button>
-                    
-                    {/* Secondary Settings Button (Only visible in compare mode) */}
-                    {isCompareMode && (
-                      <>
-                        <span className="text-[var(--text-muted)] text-xs">vs</span>
-                        <button onClick={() => openSettings('secondary')} className="px-3 py-1 rounded-full bg-[var(--bg-element)] border border-[var(--border)] text-[10px] font-medium text-[var(--text-muted)] flex items-center gap-1.5 hover:border-purple-500 hover:text-purple-400 transition-colors">
-                          <Cpu size={12} />
-                          {secondarySettings.model}
-                        </button>
-                      </>
-                    )}
-                    
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
-                    </div>
+                    <button onClick={() => openSettings('primary')} className="px-3 py-1 rounded-full bg-[var(--bg-element)] border border-[var(--border)] text-[10px] font-medium text-[var(--text-muted)] flex items-center gap-1.5 hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"><Settings size={12} /> Config A</button>
+                    {isCompareMode && <button onClick={() => openSettings('secondary')} className="px-3 py-1 rounded-full bg-[var(--bg-element)] border border-[var(--border)] text-[10px] font-medium text-[var(--text-muted)] flex items-center gap-1.5 hover:border-purple-500 hover:text-purple-400 transition-colors"><Settings size={12} /> Config B</button>}
                   </div>
                 </div>
-
-                {/* Main Chat Area - Dynamic Split */}
                 <div className="flex-1 overflow-hidden relative flex">
-                  {/* Primary Chat */}
-                  <div className={`flex-1 h-full border-r border-[var(--border)]/50 transition-all ${isCompareMode ? 'w-1/2' : 'w-full'}`}>
-                    <ChatStreamView 
-                      session={currentSession} 
-                      settings={settings} 
-                      isLoading={isLoading} 
-                    />
-                  </div>
-
-                  {/* Secondary Chat (Compare Mode) */}
-                  {isCompareMode && (
-                    <div className="flex-1 h-full bg-[var(--bg-panel)]/20 w-1/2">
-                      <ChatStreamView 
-                        session={secondarySession} 
-                        settings={secondarySettings} 
-                        isLoading={isLoading} 
-                      />
-                    </div>
-                  )}
+                  <div className={`flex-1 h-full border-r border-[var(--border)]/50 transition-all ${isCompareMode ? 'w-1/2' : 'w-full'}`}><ChatStreamView session={currentSession} settings={settings} isLoading={isLoading} title="Configuration A" /></div>
+                  {isCompareMode && <div className="flex-1 h-full bg-[var(--bg-panel)]/20 w-1/2"><ChatStreamView session={secondarySession} settings={secondarySettings} isLoading={isLoading} title="Configuration B" /></div>}
                 </div>
-
                 <div className="p-6 bg-[var(--bg-app)]/80 backdrop-blur-xl border-t border-[var(--border)] sticky bottom-0">
                   <div className="max-w-4xl mx-auto flex gap-3 relative">
-                    <textarea 
-                      rows={1}
-                      placeholder={`Interface with ${selectedPrompt.act}${isCompareMode ? ' (Dual Stream)' : ''}...`}
-                      className="flex-1 px-6 py-4 rounded-3xl bg-[var(--bg-panel)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all resize-none shadow-lg placeholder:text-[var(--text-muted)] text-[var(--text-body)]"
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                    />
-                    <button onClick={handleSendMessage} disabled={isLoading || !inputValue.trim()} className={`p-5 rounded-3xl text-white transition-all active:scale-90 disabled:opacity-50 shadow-lg ${isCompareMode ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20' : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] shadow-[var(--accent)]/20'}`}>
-                      {isCompareMode ? <SplitSquareHorizontal size={20} /> : <Send size={20} />}
-                    </button>
+                    <textarea rows={1} placeholder={`Interface with ${selectedPrompt.act}...`} className="flex-1 px-6 py-4 rounded-3xl bg-[var(--bg-panel)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all resize-none shadow-lg placeholder:text-[var(--text-muted)] text-[var(--text-body)]" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
+                    <button onClick={handleSendMessage} disabled={isLoading || !inputValue.trim()} className={`p-5 rounded-3xl text-white transition-all active:scale-90 disabled:opacity-50 shadow-lg ${isCompareMode ? 'bg-purple-600 shadow-purple-600/20' : 'bg-[var(--accent)] shadow-[var(--accent)]/20'}`}>{isCompareMode ? <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} /> : <Send size={20} />}</button>
                   </div>
                 </div>
               </div>
@@ -963,164 +878,106 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* Editor Modal - Included Existing Implementation */}
+      {/* Editor Modal */}
       <Modal isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} title={editingPrompt?.act ? "Refine Persona Node" : "Forge New Persona"}>
-        <form onSubmit={savePrompt} className="space-y-6">
-           <div className="mb-6 p-4 rounded-2xl bg-[var(--bg-element)]/50 border border-[var(--border)]">
-            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3 block">Quick Start Templates</label>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+               <button type="button" onClick={handleUndo} disabled={historyIndex <= 0} className="p-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--accent)] disabled:opacity-30 transition-all"><Undo2 size={18} /></button>
+               <button type="button" onClick={handleRedo} disabled={historyIndex >= editorHistory.length - 1} className="p-2 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--accent)] disabled:opacity-30 transition-all"><Redo2 size={18} /></button>
+            </div>
+          </div>
+
+          <div className="mb-6 p-4 rounded-2xl bg-[var(--bg-element)]/50 border border-[var(--border)]">
+            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3 block">Persona Templates</label>
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
-              {TEMPLATE_PROMPTS.map((t, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => applyTemplate(t)}
-                  className="px-3 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all text-xs font-medium whitespace-nowrap text-[var(--text-body)]"
-                >
+              {allTemplates.map((t, i) => (
+                <button key={i} type="button" onClick={() => applyTemplate(t)} className="px-3 py-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all text-xs font-medium whitespace-nowrap text-[var(--text-body)]">
                   {t.name}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Behavior Label</label>
-              <input required className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm transition-all text-[var(--text-body)]" value={editingPrompt?.act || ''} onChange={e => setEditingPrompt(prev => ({ ...prev, act: e.target.value }))} placeholder="e.g. Code Reviewer" />
+          <form onSubmit={savePrompt} className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Behavior Label</label>
+                <input required className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm transition-all text-[var(--text-body)]" value={editingPrompt?.act || ''} onChange={e => updateEditingState({ act: e.target.value })} placeholder="e.g. Code Reviewer" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Taxonomy</label>
+                <select className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm appearance-none cursor-pointer text-[var(--text-body)]" value={editingPrompt?.category} onChange={e => updateEditingState({ category: e.target.value as Category })}>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Taxonomy</label>
-              <select className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm appearance-none cursor-pointer text-[var(--text-body)]" value={editingPrompt?.category} onChange={e => setEditingPrompt(prev => ({ ...prev, category: e.target.value as Category }))}>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Description</label>
+              <textarea rows={2} className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-xs placeholder:text-[var(--text-muted)] text-[var(--text-body)]" value={editingPrompt?.description || ''} onChange={e => updateEditingState({ description: e.target.value })} placeholder="Context, background story..." />
             </div>
-          </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Instruction Matrix</label>
+              <textarea required rows={6} className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm font-mono text-[var(--text-body)]" value={editingPrompt?.prompt || ''} onChange={e => updateEditingState({ prompt: e.target.value })} placeholder="System instructions..." />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Tags (Autocomplete Active)</label>
+              <div className="relative">
+                <input className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-xs text-[var(--text-body)]" value={editingPrompt?.tags?.join(', ') || ''} onChange={e => updateEditingState({ tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })} placeholder="e.g. coding, python, web" list="all-tags-list" />
+                <datalist id="all-tags-list">{allTags.map(tag => <option key={tag} value={tag} />)}</datalist>
+              </div>
+            </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Description</label>
-            <textarea 
-              rows={2} 
-              className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-xs placeholder:text-[var(--text-muted)] text-[var(--text-body)]" 
-              value={editingPrompt?.description || ''} 
-              onChange={e => setEditingPrompt(prev => ({ ...prev, description: e.target.value }))} 
-              placeholder="Context, background story, or usage notes..." 
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Instruction Matrix</label>
-            <textarea required rows={6} className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm font-mono selection:bg-[var(--accent)]/30 text-[var(--text-body)]" value={editingPrompt?.prompt || ''} onChange={e => setEditingPrompt(prev => ({ ...prev, prompt: e.target.value }))} placeholder="System instructions for the model..." />
-          </div>
-          
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Tags (Comma Separated)</label>
-            <input 
-              className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-xs placeholder:text-[var(--text-muted)] text-[var(--text-body)]" 
-              value={editingPrompt?.tags?.join(', ') || ''} 
-              onChange={e => setEditingPrompt(prev => ({ 
-                ...prev, 
-                tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)
-              }))} 
-              placeholder="e.g. coding, python, web" 
-            />
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={exportPromptAsJson} className="flex-1 py-5 rounded-[2rem] bg-[var(--bg-element)] text-[var(--text-heading)] font-black uppercase tracking-[0.2em] hover:bg-[var(--bg-element-hover)] transition-all border border-[var(--border)] flex items-center justify-center gap-2">
-              <Download size={18} /> Export JSON
-            </button>
-            <button type="submit" className="flex-[2] py-5 rounded-[2rem] bg-[var(--accent)] text-white font-black uppercase tracking-[0.2em] hover:bg-[var(--accent-hover)] transition-all shadow-xl shadow-[var(--accent)]/30">
-              Commit Vector
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Advanced Settings Modal - Updated for Dynamic Target (Primary vs Secondary) */}
-      <Modal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title={`Simulation Config (${settingsTarget})`}>
-        {/* Tab Nav */}
-        <div className="flex items-center gap-1 p-1 mb-6 bg-[var(--bg-element)]/50 rounded-xl border border-[var(--border)] shrink-0">
-            <button 
-                onClick={() => setSettingsTab('model')} 
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${settingsTab === 'model' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm ring-1 ring-black/5' : 'text-[var(--text-muted)] hover:text-[var(--text-body)] hover:bg-[var(--bg-element-hover)]'}`}
-            >
-                <BrainCircuit size={14} /> Model
-            </button>
-            <button 
-                onClick={() => setSettingsTab('params')} 
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${settingsTab === 'params' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm ring-1 ring-black/5' : 'text-[var(--text-muted)] hover:text-[var(--text-body)] hover:bg-[var(--bg-element-hover)]'}`}
-            >
-                <Sliders size={14} /> Params
-            </button>
-            <button 
-                onClick={() => setSettingsTab('interface')} 
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${settingsTab === 'interface' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm ring-1 ring-black/5' : 'text-[var(--text-muted)] hover:text-[var(--text-body)] hover:bg-[var(--bg-element-hover)]'}`}
-            >
-                <Palette size={14} /> Interface
-            </button>
-        </div>
-
-        <div className="space-y-6 min-h-[300px]">
-            {settingsTab === 'interface' && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="p-4 rounded-2xl bg-[var(--bg-element)]/30 border border-[var(--border)] text-xs text-[var(--text-muted)]">
-                        Customize the visual appearance of the workspace.
+            {/* Version Management Component */}
+            {editingPrompt?.versions && editingPrompt.versions.length > 0 && (
+              <div className="p-4 rounded-2xl bg-[var(--bg-element)]/50 border border-[var(--border)]">
+                <h4 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3 flex items-center gap-2"><Clock size={12} /> Revision History</h4>
+                <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                  {[...editingPrompt.versions].reverse().map((v, i) => (
+                    <div key={i} className="flex items-center justify-between p-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)] hover:border-[var(--accent)] transition-all">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-mono text-[var(--text-muted)]">{new Date(v.timestamp).toLocaleString()}</span>
+                        <span className="text-[10px] font-bold truncate max-w-[200px]">{v.act}</span>
+                      </div>
+                      <button type="button" onClick={() => revertToVersion(v)} className="text-[9px] font-bold uppercase text-[var(--accent)] hover:underline">Revert</button>
                     </div>
-                    <div className="grid grid-cols-1 gap-3">
-                        {THEMES.map(theme => (
-                            <button
-                              key={theme.id}
-                              onClick={() => setCurrentThemeId(theme.id)}
-                              className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${
-                                currentThemeId === theme.id
-                                  ? 'bg-[var(--accent)]/10 border-[var(--accent)]'
-                                  : 'bg-[var(--bg-element)] border-[var(--border)] hover:bg-[var(--bg-element-hover)]'
-                              }`}
-                            >
-                               <div className="w-12 h-12 rounded-lg shadow-sm border border-[var(--border)] relative overflow-hidden">
-                                    <div className="absolute inset-0" style={{ backgroundColor: theme.colors['--bg-app'] }}></div>
-                                    <div className="absolute bottom-0 right-0 w-6 h-6 rounded-tl-lg" style={{ backgroundColor: theme.colors['--bg-panel'] }}></div>
-                               </div>
-                               <div className="flex-1 text-left">
-                                    <span className={`text-sm font-bold block ${currentThemeId === theme.id ? 'text-[var(--text-heading)]' : 'text-[var(--text-body)]'}`}>
-                                        {theme.name}
-                                    </span>
-                                    <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">
-                                        {theme.id === 'pro-dark' ? 'High Contrast' : theme.id === 'pro-light' ? 'Clean & Bright' : 'Deep Focus'}
-                                    </span>
-                               </div>
-                               {currentThemeId === theme.id && <CheckCircle2 size={18} className="text-[var(--accent)]" />}
-                            </button>
-                        ))}
-                    </div>
+                  ))}
                 </div>
+              </div>
             )}
 
+            <div className="flex flex-col gap-3 pt-2">
+              <div className="flex gap-3">
+                <button type="button" onClick={saveAsTemplate} className="flex-1 py-4 rounded-[1.5rem] bg-[var(--bg-element)] text-[var(--text-heading)] font-black uppercase tracking-wider hover:bg-[var(--bg-element-hover)] transition-all border border-[var(--border)] flex items-center justify-center gap-2 text-[10px]"><Save size={16} /> Save as Template</button>
+                <button type="button" onClick={() => exportPromptAsJson(editingPrompt as PromptItem)} className="flex-1 py-4 rounded-[1.5rem] bg-[var(--bg-element)] text-[var(--text-heading)] font-black uppercase tracking-wider hover:bg-[var(--bg-element-hover)] transition-all border border-[var(--border)] flex items-center justify-center gap-2 text-[10px]"><Download size={16} /> Export JSON</button>
+              </div>
+              <button type="submit" className="w-full py-5 rounded-[2rem] bg-[var(--accent)] text-white font-black uppercase tracking-[0.2em] hover:bg-[var(--accent-hover)] transition-all shadow-xl shadow-[var(--accent)]/30">Commit Persona Node</button>
+            </div>
+          </form>
+        </div>
+      </Modal>
+
+      {/* Enhanced Settings Modal */}
+      <Modal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title={`Simulation Config (${settingsTarget === 'primary' ? 'A' : 'B'})`}>
+        <div className="flex items-center gap-1 p-1 mb-6 bg-[var(--bg-element)]/50 rounded-xl border border-[var(--border)] shrink-0">
+            <button onClick={() => setSettingsTab('model')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${settingsTab === 'model' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm' : 'text-[var(--text-muted)]'}`}><BrainCircuit size={14} /> Model</button>
+            <button onClick={() => setSettingsTab('params')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${settingsTab === 'params' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm' : 'text-[var(--text-muted)]'}`}><Sliders size={14} /> Params</button>
+            <button onClick={() => setSettingsTab('theme')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${settingsTab === 'theme' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm' : 'text-[var(--text-muted)]'}`}><Palette size={14} /> Theme</button>
+        </div>
+
+        <div className="space-y-6 min-h-[350px]">
             {settingsTab === 'model' && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                     <div className="p-4 rounded-2xl bg-[var(--bg-element)]/30 border border-[var(--border)] text-xs text-[var(--text-muted)]">
-                        Select the reasoning engine for the <strong>{settingsTarget}</strong> session.
-                    </div>
+                    <div className="p-4 rounded-2xl bg-[var(--bg-element)]/30 border border-[var(--border)] text-xs text-[var(--text-muted)] leading-relaxed">Choose the base model for this reasoning branch. <strong>Gemini 3 Pro</strong> is recommended for deep logic and coding tasks.</div>
                     <div className="grid grid-cols-1 gap-2">
                         {[
-                            { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', desc: 'Fast, efficient, low latency.' },
-                            { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', desc: 'Complex reasoning, high capability.' },
+                          { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', desc: 'Fast, efficient, high-concurrency architecture.' },
+                          { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', desc: 'SOTA reasoning for complex instructions and logic.' }
                         ].map((m) => (
-                            <button
-                                key={m.id}
-                                onClick={() => setSettingsToEdit(prev => ({ ...prev, model: m.id }))}
-                                className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${
-                                    activeSettingsToEdit.model === m.id 
-                                    ? 'bg-[var(--accent)]/10 border-[var(--accent)] ring-1 ring-[var(--accent)]' 
-                                    : 'bg-[var(--bg-element)] border-[var(--border)] hover:bg-[var(--bg-element-hover)]'
-                                }`}
-                            >
+                            <button key={m.id} onClick={() => setSettingsToEdit(prev => ({ ...prev, model: m.id }))} className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${activeSettingsToEdit.model === m.id ? 'bg-[var(--accent)]/10 border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'bg-[var(--bg-element)] border-[var(--border)]'}`}>
                                 <div className="flex items-center gap-4">
-                                    <div className={`p-3 rounded-full ${activeSettingsToEdit.model === m.id ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-element-hover)] text-[var(--text-muted)]'}`}>
-                                        <Cpu size={20} />
-                                    </div>
-                                    <div>
-                                        <div className={`font-bold ${activeSettingsToEdit.model === m.id ? 'text-[var(--text-heading)]' : 'text-[var(--text-body)]'}`}>{m.name}</div>
-                                        <div className="text-xs text-[var(--text-muted)]">{m.desc}</div>
-                                    </div>
+                                    <div className={`p-3 rounded-full ${activeSettingsToEdit.model === m.id ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-element-hover)] text-[var(--text-muted)]'}`}><Cpu size={20} /></div>
+                                    <div><div className="font-bold">{m.name}</div><div className="text-[10px] text-[var(--text-muted)] mt-1">{m.desc}</div></div>
                                 </div>
                                 {activeSettingsToEdit.model === m.id && <CheckCircle2 size={20} className="text-[var(--accent)]" />}
                             </button>
@@ -1130,73 +987,49 @@ const App: React.FC = () => {
             )}
 
             {settingsTab === 'params' && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-end">
-                            <label className="text-sm font-bold text-[var(--text-heading)] flex items-center gap-2">
-                                <Sliders size={16} className="text-emerald-400" />
-                                Temperature
-                            </label>
-                            <div className="text-right">
-                                 <span className="text-xl font-mono font-bold text-[var(--text-heading)]">{activeSettingsToEdit.temperature.toFixed(1)}</span>
-                            </div>
-                        </div>
-                        <input 
-                            type="range" min="0" max="2" step="0.1"
-                            value={activeSettingsToEdit.temperature}
-                            onChange={(e) => setSettingsToEdit(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
-                            className="w-full h-2 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-[var(--accent)]"
-                        />
-                        <p className="text-xs text-[var(--text-muted)]">Controls randomness: Lower values are more deterministic, higher values are more creative.</p>
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center"><label className="text-xs font-bold flex items-center gap-2"><RefreshCw size={14} className="text-blue-400" /> Temperature</label><span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.temperature.toFixed(1)}</span></div>
+                        <input type="range" min="0" max="2" step="0.1" value={activeSettingsToEdit.temperature} onChange={(e) => setSettingsToEdit(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))} className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-[var(--accent)]" />
+                        <p className="text-[10px] text-[var(--text-muted)] italic">Lower: Precision. Higher: Creativity.</p>
                     </div>
-                    
-                    {(activeSettingsToEdit.model.includes('gemini-3')) && (
-                        <div className="space-y-4 pt-6 border-t border-[var(--border)]">
-                            <div className="flex justify-between items-end">
-                                <label className="text-sm font-bold text-[var(--text-heading)] flex items-center gap-2">
-                                    <BrainCircuit size={16} className="text-purple-400" />
-                                    Thinking Budget
-                                </label>
-                                <div className="text-right">
-                                    <span className="text-xl font-mono font-bold text-[var(--text-heading)]">{activeSettingsToEdit.thinkingBudget}</span>
-                                    <span className="text-xs text-[var(--text-muted)] ml-1">tokens</span>
-                                </div>
-                            </div>
-                            <input 
-                                type="range" min="0" max="4000" step="256"
-                                value={activeSettingsToEdit.thinkingBudget}
-                                onChange={(e) => setSettingsToEdit(prev => ({ ...prev, thinkingBudget: parseInt(e.target.value) }))}
-                                className="w-full h-2 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-purple-500"
-                            />
-                            <p className="text-xs text-[var(--text-muted)]">Allocates tokens for internal reasoning before generating a response. Higher budget improves complex problem solving.</p>
-                        </div>
-                    )}
+                    <div className="space-y-3 pt-4 border-t border-[var(--border)]/50">
+                        <div className="flex justify-between items-center"><label className="text-xs font-bold flex items-center gap-2"><Gauge size={14} className="text-emerald-400" /> Top P</label><span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.topP.toFixed(2)}</span></div>
+                        <input type="range" min="0" max="1" step="0.01" value={activeSettingsToEdit.topP} onChange={(e) => setSettingsToEdit(prev => ({ ...prev, topP: parseFloat(e.target.value) }))} className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                    </div>
+                    <div className="space-y-3 pt-4 border-t border-[var(--border)]/50">
+                        <div className="flex justify-between items-center"><label className="text-xs font-bold flex items-center gap-2"><Hash size={14} className="text-orange-400" /> Top K</label><span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.topK}</span></div>
+                        <input type="range" min="1" max="100" step="1" value={activeSettingsToEdit.topK} onChange={(e) => setSettingsToEdit(prev => ({ ...prev, topK: parseInt(e.target.value) }))} className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-orange-500" />
+                    </div>
+                    <div className="space-y-3 pt-4 border-t border-[var(--border)]/50">
+                        <div className="flex justify-between items-center"><label className="text-xs font-bold flex items-center gap-2"><BrainCircuit size={14} className="text-purple-400" /> Thinking Budget</label><span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.thinkingBudget}</span></div>
+                        <input type="range" min="0" max={activeSettingsToEdit.model.includes('pro') ? 32768 : 24576} step="128" value={activeSettingsToEdit.thinkingBudget} onChange={(e) => setSettingsToEdit(prev => ({ ...prev, thinkingBudget: parseInt(e.target.value) }))} className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                    </div>
                 </div>
             )}
-        </div>
 
-        <div className="pt-6 mt-6 border-t border-[var(--border)]">
-            <button onClick={() => setIsSettingsOpen(false)} className="w-full py-4 rounded-xl bg-[var(--accent)] text-white font-bold hover:bg-[var(--accent-hover)] transition-all shadow-lg shadow-[var(--accent)]/20">
-                Apply Configuration
-            </button>
+            {settingsTab === 'theme' && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                 <div className="grid grid-cols-1 gap-3">
+                    {THEMES.map(theme => (
+                        <button key={theme.id} onClick={() => setCurrentThemeId(theme.id)} className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${currentThemeId === theme.id ? 'bg-[var(--accent)]/10 border-[var(--accent)]' : 'bg-[var(--bg-element)] border-[var(--border)]'}`}>
+                            <div className="w-8 h-8 rounded-lg shadow-sm border border-[var(--border)]" style={{ backgroundColor: theme.colors['--bg-panel'] }} />
+                            <div className="flex-1 text-left"><span className="text-sm font-bold block">{theme.name}</span></div>
+                            {currentThemeId === theme.id && <CheckCircle2 size={18} className="text-[var(--accent)]" />}
+                        </button>
+                    ))}
+                 </div>
+              </div>
+            )}
         </div>
+        <button onClick={() => setIsSettingsOpen(false)} className="w-full py-4 mt-6 rounded-xl bg-[var(--accent)] text-white font-bold shadow-lg shadow-[var(--accent)]/20 hover:bg-[var(--accent-hover)] transition-all">Apply Configuration</button>
       </Modal>
 
-      {/* Other Modals (History, Help, Feedback) - [Preserved but truncated for brevity if logic identical] */}
       <Modal isOpen={isClearHistoryConfirmOpen} onClose={() => setIsClearHistoryConfirmOpen(false)} title="Destroy Session Archive">
          <div className="space-y-8 text-center py-4">
-          <div className="inline-block p-6 rounded-[2.5rem] bg-red-500/10 text-red-500 relative group">
-            <div className="absolute inset-0 bg-red-500/10 blur-2xl rounded-full" />
-            <AlertTriangle size={48} className="relative z-10" />
-          </div>
-          <div className="space-y-3">
-            <h4 className="text-2xl font-black text-[var(--text-heading)] uppercase tracking-tighter">Wipe Log?</h4>
-            <p className="text-[var(--text-muted)] leading-relaxed max-w-xs mx-auto text-sm">Permanent deletion of simulation history.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => setIsClearHistoryConfirmOpen(false)} className="py-4 rounded-3xl bg-[var(--bg-element)] font-black uppercase tracking-widest hover:bg-[var(--bg-element-hover)] transition-all text-[10px] text-[var(--text-muted)]">Abort</button>
-            <button onClick={clearHistory} className="py-4 rounded-3xl bg-red-600 font-black uppercase tracking-widest hover:bg-red-500 transition-all text-white text-[10px]">Execute</button>
-          </div>
+          <div className="inline-block p-6 rounded-[2.5rem] bg-red-500/10 text-red-500 relative"><AlertTriangle size={48} /></div>
+          <div className="space-y-3"><h4 className="text-2xl font-black uppercase tracking-tighter">Wipe Log?</h4><p className="text-[var(--text-muted)] text-sm">Permanent deletion of simulation history.</p></div>
+          <div className="grid grid-cols-2 gap-4"><button onClick={() => setIsClearHistoryConfirmOpen(false)} className="py-4 rounded-3xl bg-[var(--bg-element)] font-black uppercase tracking-widest text-[10px] text-[var(--text-muted)]">Abort</button><button onClick={clearHistory} className="py-4 rounded-3xl bg-red-600 font-black uppercase tracking-widest text-white text-[10px]">Execute</button></div>
         </div>
       </Modal>
     </div>

@@ -1,6 +1,13 @@
 
 export type Category = 'Code Assistance' | 'AI Art Generation' | 'Writing & Content' | 'Data Analysis' | 'Miscellaneous';
 
+export interface PersonaVersion {
+  timestamp: number;
+  prompt: string;
+  description?: string;
+  act: string;
+}
+
 export interface PromptItem {
   id: string;
   act: string;
@@ -12,6 +19,7 @@ export interface PromptItem {
   tags: string[];
   category: Category;
   isCustom?: boolean;
+  versions?: PersonaVersion[];
 }
 
 export interface Message {
