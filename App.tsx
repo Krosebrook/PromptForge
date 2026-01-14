@@ -1,9 +1,11 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { PROMPTS_DATA, THEMES, TEMPLATE_PROMPTS as INITIAL_TEMPLATES } from './constants';
+import { PROMPTS_DATA, THEMES, TEMPLATE_PROMPTS as INITIAL_TEMPLATES, DEFAULT_SETTINGS, ART_SUGGESTIONS } from './constants';
 import { PromptItem, Message, Category, ChatSession, SimulationSettings, PersonaVersion } from './types';
 import { geminiService } from './services/geminiService';
 import { DOCUMENTATION_CONTENT } from './documentation';
+import { Modal } from './Modal';
+import { ChatStreamView } from './ChatStreamView';
 import { 
   Search, 
   Terminal, 
@@ -62,7 +64,8 @@ import {
   Save,
   ArrowUpDown,
   Calendar,
-  Wand2
+  Wand2,
+  ChevronRight
 } from 'lucide-react';
 
 const CATEGORIES: Category[] = [
@@ -74,94 +77,6 @@ const CATEGORIES: Category[] = [
 ];
 
 const TYPES: PromptItem['type'][] = ['TEXT', 'STRUCTURED', 'IMAGE'];
-
-const DEFAULT_SETTINGS: SimulationSettings = {
-  model: 'gemini-3-flash-preview',
-  temperature: 0.7,
-  topP: 0.95,
-  topK: 64,
-  thinkingBudget: 0,
-  maxOutputTokens: 8192
-};
-
-const ART_SUGGESTIONS = {
-  styles: ['Photorealistic', 'Cyberpunk', 'Anime', 'Oil Painting', 'Watercolor', '3D Render', 'Pixel Art', 'Sketch', 'Concept Art'],
-  lighting: ['Cinematic Lighting', 'Natural Light', 'Studio Lighting', 'Bioluminescent', 'Golden Hour', 'Volumetric Lighting'],
-  params: ['--ar 16:9', '--ar 9:16', '4k', '8k', 'High Resolution', 'Detailed', 'Minimalist']
-};
-
-const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ isOpen, onClose, title, children }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-[var(--bg-panel)] border border-[var(--border)] rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between p-6 border-b border-[var(--border)] shrink-0">
-          <h3 className="text-xl font-bold text-[var(--text-heading)]">{title}</h3>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--bg-element-hover)] text-[var(--text-muted)] transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="p-6 overflow-y-auto custom-scrollbar">{children}</div>
-      </div>
-    </div>
-  );
-};
-
-const ChatStreamView: React.FC<{
-  session: ChatSession | null;
-  settings: SimulationSettings;
-  isLoading: boolean;
-  title?: string;
-  isActive?: boolean;
-}> = ({ session, settings, isLoading, title, isActive = true }) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [session?.messages, isLoading]);
-
-  if (!session) return null;
-
-  return (
-    <div className={`flex flex-col h-full ${isActive ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
-      <div className="px-4 py-3 border-b border-[var(--border)] bg-[var(--bg-panel)]/50 backdrop-blur-sm flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-2">
-           <Cpu size={14} className="text-[var(--accent)]" />
-           <span className="text-xs font-bold text-[var(--text-body)]">{title || settings.model}</span>
-        </div>
-        <div className="flex items-center gap-2">
-           <span className="text-[10px] font-mono text-[var(--text-muted)]">T: {settings.temperature}</span>
-           <div className={`w-1.5 h-1.5 rounded-full ${isLoading ? 'bg-[var(--accent)] animate-pulse' : 'bg-emerald-500'}`} />
-        </div>
-      </div>
-      
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth no-scrollbar">
-        {session.messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-            <div className={`max-w-[90%] p-4 rounded-2xl text-sm ${
-              m.role === 'user' 
-                ? 'bg-[var(--accent)] text-[var(--accent-text)] rounded-br-none shadow-md' 
-                : 'bg-[var(--bg-element)] text-[var(--text-body)] rounded-bl-none border border-[var(--border)]'
-            }`}>
-              <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
-            </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex justify-start animate-pulse">
-            <div className="bg-[var(--bg-element)]/50 p-4 rounded-2xl rounded-bl-none border border-[var(--border)]/50 flex gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-bounce" />
-              <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-bounce [animation-delay:-0.2s]" />
-              <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-bounce [animation-delay:-0.4s]" />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 
 const App: React.FC = () => {
   // Persistence states
@@ -578,10 +493,18 @@ const App: React.FC = () => {
     if (!editingPrompt) return;
     const p = { ...editingPrompt } as PromptItem;
     const oldVersion = allPrompts.find(item => item.id === p.id);
-    if (oldVersion && (oldVersion.prompt !== p.prompt || oldVersion.act !== p.act)) {
-      const versionRecord: PersonaVersion = { timestamp: Date.now(), prompt: oldVersion.prompt, description: oldVersion.description, act: oldVersion.act };
+    
+    // Check if critical fields or description have changed to create a version
+    if (oldVersion && (oldVersion.prompt !== p.prompt || oldVersion.act !== p.act || oldVersion.description !== p.description)) {
+      const versionRecord: PersonaVersion = { 
+        timestamp: Date.now(), 
+        prompt: oldVersion.prompt, 
+        description: oldVersion.description, 
+        act: oldVersion.act 
+      };
       p.versions = [...(oldVersion.versions || []), versionRecord];
     }
+
     setCustomPrompts(prev => [p, ...prev.filter(item => item.id !== p.id)]);
     setIsEditorOpen(false);
     setSelectedPrompt(p);
@@ -607,12 +530,23 @@ const App: React.FC = () => {
   };
 
   const exportPromptAsJson = (item: Partial<PromptItem>) => {
-    const blob = new Blob([JSON.stringify(item, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${(item.act || "persona").replace(/[^a-z0-9]/gi, '_')}.json`;
-    link.click();
+    try {
+        const jsonString = JSON.stringify(item, null, 2);
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        // Sanitize filename
+        const filename = (item.act || "persona").replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        link.download = `${filename}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error("Export failed", e);
+        alert("Failed to export persona.");
+    }
   };
 
   const handleShare = async (item: PromptItem) => {
@@ -790,6 +724,7 @@ const App: React.FC = () => {
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => handleShare(selectedPrompt)} className="p-2.5 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--accent)] border border-[var(--border)] transition-all"><Share2 size={20} /></button>
+                          <button onClick={() => exportPromptAsJson(selectedPrompt)} className="p-2.5 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--accent)] border border-[var(--border)] transition-all" title="Export JSON"><Download size={20} /></button>
                           <button onClick={() => openPromptEditor(selectedPrompt)} className="p-2.5 rounded-xl bg-[var(--bg-element)] text-[var(--text-muted)] hover:text-[var(--text-heading)] border border-[var(--border)] transition-all"><Edit size={20} /></button>
                         </div>
                       </div>
@@ -1054,12 +989,15 @@ const App: React.FC = () => {
                 <h4 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3 flex items-center gap-2"><Clock size={12} /> Revision History</h4>
                 <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
                   {[...editingPrompt.versions].reverse().map((v, i) => (
-                    <div key={i} className="flex items-center justify-between p-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)] hover:border-[var(--accent)] transition-all">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-mono text-[var(--text-muted)]">{new Date(v.timestamp).toLocaleString()}</span>
-                        <span className="text-[10px] font-bold truncate max-w-[200px]">{v.act}</span>
+                    <div key={i} className="flex items-center justify-between p-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)] hover:border-[var(--accent)] transition-all group">
+                      <div className="flex flex-col min-w-0 flex-1 mr-3">
+                        <div className="flex items-center gap-2">
+                           <span className="text-[9px] font-mono text-[var(--text-muted)]">{new Date(v.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
+                        </div>
+                        <span className="text-[10px] font-bold truncate text-[var(--text-body)]">{v.act}</span>
+                        {v.description && <span className="text-[9px] text-[var(--text-muted)] truncate">{v.description}</span>}
                       </div>
-                      <button type="button" onClick={() => revertToVersion(v)} className="text-[9px] font-bold uppercase text-[var(--accent)] hover:underline">Revert</button>
+                      <button type="button" onClick={() => revertToVersion(v)} className="px-2 py-1 rounded-lg bg-[var(--bg-element)] text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-wider group-hover:bg-[var(--accent)] group-hover:text-white transition-all">Revert</button>
                     </div>
                   ))}
                 </div>
@@ -1088,20 +1026,43 @@ const App: React.FC = () => {
         <div className="space-y-6 min-h-[350px]">
             {settingsTab === 'model' && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="p-4 rounded-2xl bg-[var(--bg-element)]/30 border border-[var(--border)] text-xs text-[var(--text-muted)] leading-relaxed">Choose the base model for this reasoning branch. <strong>Gemini 3 Pro</strong> is recommended for deep logic and coding tasks.</div>
-                    <div className="grid grid-cols-1 gap-2">
-                        {[
-                          { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', desc: 'Fast, efficient, high-concurrency architecture.' },
-                          { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', desc: 'SOTA reasoning for complex instructions and logic.' }
-                        ].map((m) => (
-                            <button key={m.id} onClick={() => setSettingsToEdit(prev => ({ ...prev, model: m.id }))} className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${activeSettingsToEdit.model === m.id ? 'bg-[var(--accent)]/10 border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'bg-[var(--bg-element)] border-[var(--border)]'}`}>
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-3 rounded-full ${activeSettingsToEdit.model === m.id ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-element-hover)] text-[var(--text-muted)]'}`}><Cpu size={20} /></div>
-                                    <div><div className="font-bold">{m.name}</div><div className="text-[10px] text-[var(--text-muted)] mt-1">{m.desc}</div></div>
-                                </div>
-                                {activeSettingsToEdit.model === m.id && <CheckCircle2 size={20} className="text-[var(--accent)]" />}
-                            </button>
-                        ))}
+                    <div className="p-4 rounded-2xl bg-[var(--bg-element)]/30 border border-[var(--border)] text-xs text-[var(--text-muted)] leading-relaxed">Choose the primary reasoning engine. <strong>Gemini 3 Pro</strong> is recommended for high-stakes logic and complex engineering tasks.</div>
+                    
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1 flex items-center gap-2"><Cpu size={10}/> Select Engine</label>
+                      <div className="relative">
+                        <select 
+                          className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm font-bold appearance-none cursor-pointer text-[var(--text-body)] transition-all hover:border-[var(--accent)]"
+                          value={activeSettingsToEdit.model}
+                          onChange={(e) => setSettingsToEdit(prev => ({ ...prev, model: e.target.value }))}
+                        >
+                          <option value="gemini-3-flash-preview">Gemini 3 Flash (High Concurrency)</option>
+                          <option value="gemini-3-pro-preview">Gemini 3 Pro (SOTA Reasoning)</option>
+                        </select>
+                        <ChevronDown size={18} className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] space-y-3">
+                       <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-heading)]">
+                          <Info size={14} className="text-[var(--accent)]" />
+                          {activeSettingsToEdit.model.includes('pro') ? 'Gemini 3 Pro Capabilities' : 'Gemini 3 Flash Capabilities'}
+                       </div>
+                       <ul className="text-[10px] text-[var(--text-muted)] space-y-1 ml-5 list-disc leading-relaxed">
+                          {activeSettingsToEdit.model.includes('pro') ? (
+                            <>
+                              <li>Advanced multi-step reasoning capabilities.</li>
+                              <li>Superior instruction following for complex personas.</li>
+                              <li>Highest reasoning budget (32k thinking tokens).</li>
+                            </>
+                          ) : (
+                            <>
+                              <li>Sub-second response latency for interactive chat.</li>
+                              <li>Optimized for rapid iterative persona development.</li>
+                              <li>High throughput for standard text tasks.</li>
+                            </>
+                          )}
+                       </ul>
                     </div>
                 </div>
             )}
@@ -1109,21 +1070,47 @@ const App: React.FC = () => {
             {settingsTab === 'params' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <div className="space-y-3">
-                        <div className="flex justify-between items-center"><label className="text-xs font-bold flex items-center gap-2"><RefreshCw size={14} className="text-blue-400" /> Temperature</label><span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.temperature.toFixed(1)}</span></div>
+                        <div className="flex justify-between items-center">
+                          <label className="text-xs font-bold flex items-center gap-2" title="Controls randomness: lower is more deterministic, higher is more creative."><RefreshCw size={14} className="text-blue-400" /> Temperature</label>
+                          <span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.temperature.toFixed(1)}</span>
+                        </div>
                         <input type="range" min="0" max="2" step="0.1" value={activeSettingsToEdit.temperature} onChange={(e) => setSettingsToEdit(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))} className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-[var(--accent)]" />
-                        <p className="text-[10px] text-[var(--text-muted)] italic">Lower: Precision. Higher: Creativity.</p>
                     </div>
+
                     <div className="space-y-3 pt-4 border-t border-[var(--border)]/50">
-                        <div className="flex justify-between items-center"><label className="text-xs font-bold flex items-center gap-2"><Gauge size={14} className="text-emerald-400" /> Top P</label><span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.topP.toFixed(2)}</span></div>
+                        <div className="flex justify-between items-center">
+                          <label className="text-xs font-bold flex items-center gap-2" title="Nucleus sampling: filters tokens whose cumulative probability exceeds P."><Gauge size={14} className="text-emerald-400" /> Top P</label>
+                          <span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.topP.toFixed(2)}</span>
+                        </div>
                         <input type="range" min="0" max="1" step="0.01" value={activeSettingsToEdit.topP} onChange={(e) => setSettingsToEdit(prev => ({ ...prev, topP: parseFloat(e.target.value) }))} className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-emerald-500" />
                     </div>
+
                     <div className="space-y-3 pt-4 border-t border-[var(--border)]/50">
-                        <div className="flex justify-between items-center"><label className="text-xs font-bold flex items-center gap-2"><Hash size={14} className="text-orange-400" /> Top K</label><span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.topK}</span></div>
+                        <div className="flex justify-between items-center">
+                          <label className="text-xs font-bold flex items-center gap-2" title="Limits selection to the top K most likely tokens."><Hash size={14} className="text-orange-400" /> Top K</label>
+                          <span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.topK}</span>
+                        </div>
                         <input type="range" min="1" max="100" step="1" value={activeSettingsToEdit.topK} onChange={(e) => setSettingsToEdit(prev => ({ ...prev, topK: parseInt(e.target.value) }))} className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-orange-500" />
                     </div>
+
                     <div className="space-y-3 pt-4 border-t border-[var(--border)]/50">
-                        <div className="flex justify-between items-center"><label className="text-xs font-bold flex items-center gap-2"><BrainCircuit size={14} className="text-purple-400" /> Thinking Budget</label><span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.thinkingBudget}</span></div>
-                        <input type="range" min="0" max={activeSettingsToEdit.model.includes('pro') ? 32768 : 24576} step="128" value={activeSettingsToEdit.thinkingBudget} onChange={(e) => setSettingsToEdit(prev => ({ ...prev, thinkingBudget: parseInt(e.target.value) }))} className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                        <div className="flex justify-between items-center">
+                          <label className="text-xs font-bold flex items-center gap-2" title="The number of tokens the model uses to 'think' internally before providing a response."><BrainCircuit size={14} className="text-purple-400" /> Thinking Budget</label>
+                          <span className="text-xs font-mono font-bold px-2 py-1 bg-[var(--bg-element)] rounded-lg">{activeSettingsToEdit.thinkingBudget}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max={activeSettingsToEdit.model.includes('pro') ? 32768 : 24576} 
+                          step="128" 
+                          value={activeSettingsToEdit.thinkingBudget} 
+                          onChange={(e) => setSettingsToEdit(prev => ({ ...prev, thinkingBudget: parseInt(e.target.value) }))} 
+                          className="w-full h-1.5 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-purple-500" 
+                        />
+                        <div className="flex justify-between text-[10px] text-[var(--text-muted)] italic">
+                          <span>Concise Reasoning</span>
+                          <span>Deep Chain-of-Thought</span>
+                        </div>
                     </div>
                 </div>
             )}

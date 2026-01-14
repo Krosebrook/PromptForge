@@ -16,6 +16,11 @@ Comprehensive overview of the application's security architecture.
 - **AI Core**: Google Gemini 3 (SDK v1.34.0)
 - **Vision Core**: Gemini 2.5 Flash Image`,
   'CHANGELOG_SEMANTIC.md': `# Semantic Changelog
+v1.4.0 - Content Expansion & Refactoring
+- **Library Expansion**: Added 15 new professional personas ranging from Regex Generators to Fitness Coaches.
+- **Code Refactoring**: Extracted core UI components (ChatStreamView, Modal) for improved maintainability.
+- **Organization**: Centralized configuration constants.
+
 v1.3.0 - Multimodal Mastery
 - **Native Image Synthesis**: Integrated 'gemini-2.5-flash-image' for personas categorized under AI Art Generation.
 - **Deep Portability**: Added JSON Import system to complement the existing Export facility.
