@@ -48,7 +48,7 @@ class GeminiService {
   /**
    * Generates a native image using the nano banana series models.
    */
-  public async generateImage(prompt: string, aspectRatio: "1:1" | "4:3" | "16:9" = "1:1"): Promise<string | null> {
+  public async generateImage(prompt: string, aspectRatio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9" = "1:1"): Promise<string | null> {
     try {
       const response: GenerateContentResponse = await this.ai.models.generateContent({
         model: 'gemini-2.5-flash-image',

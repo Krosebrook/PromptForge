@@ -61,7 +61,8 @@ import {
   Clock,
   Save,
   ArrowUpDown,
-  Calendar
+  Calendar,
+  Wand2
 } from 'lucide-react';
 
 const CATEGORIES: Category[] = [
@@ -81,6 +82,12 @@ const DEFAULT_SETTINGS: SimulationSettings = {
   topK: 64,
   thinkingBudget: 0,
   maxOutputTokens: 8192
+};
+
+const ART_SUGGESTIONS = {
+  styles: ['Photorealistic', 'Cyberpunk', 'Anime', 'Oil Painting', 'Watercolor', '3D Render', 'Pixel Art', 'Sketch', 'Concept Art'],
+  lighting: ['Cinematic Lighting', 'Natural Light', 'Studio Lighting', 'Bioluminescent', 'Golden Hour', 'Volumetric Lighting'],
+  params: ['--ar 16:9', '--ar 9:16', '4k', '8k', 'High Resolution', 'Detailed', 'Minimalist']
 };
 
 const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ isOpen, onClose, title, children }) => {
@@ -205,6 +212,8 @@ const App: React.FC = () => {
   // Image Generation States
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState<"1:1" | "3:4" | "4:3" | "9:16" | "16:9">("1:1");
+  const [generationProgress, setGenerationProgress] = useState(0);
 
   // Comparison State
   const [isCompareMode, setIsCompareMode] = useState(false);
@@ -336,6 +345,7 @@ const App: React.FC = () => {
     setIsCompareMode(false);
     setSelectedDoc(null);
     setGeneratedImageUrl(null);
+    setAspectRatio("1:1"); // Reset aspect ratio
   };
 
   const toggleFavorite = (id: string, e?: React.MouseEvent) => {
@@ -422,10 +432,32 @@ const App: React.FC = () => {
   const startImageSynthesis = async () => {
     if (!selectedPrompt) return;
     setIsGeneratingImage(true);
-    const result = await geminiService.generateImage(selectedPrompt.prompt);
-    if (result) setGeneratedImageUrl(result);
-    else alert("Multimodal Synthesis Failed. Check API quota.");
-    setIsGeneratingImage(false);
+    setGenerationProgress(0);
+    setGeneratedImageUrl(null);
+    
+    // Simulate progress
+    const interval = setInterval(() => {
+        setGenerationProgress(prev => {
+            if (prev >= 95) return 95;
+            // Variable speed: fast start, slow finish
+            const increment = prev < 30 ? 10 : prev < 70 ? 5 : 1; 
+            return prev + increment;
+        });
+    }, 400);
+
+    const result = await geminiService.generateImage(selectedPrompt.prompt, aspectRatio);
+    
+    clearInterval(interval);
+    setGenerationProgress(100);
+    
+    setTimeout(() => {
+        if (result) {
+            setGeneratedImageUrl(result);
+        } else {
+            alert("Multimodal Synthesis Failed. Check API quota.");
+        }
+        setIsGeneratingImage(false);
+    }, 500);
   };
 
   const resumeSession = (session: ChatSession) => {
@@ -517,6 +549,12 @@ const App: React.FC = () => {
       setHistoryIndex(newHistory.length - 1);
       return next;
     });
+  };
+
+  const appendToPrompt = (text: string) => {
+    const current = editingPrompt?.prompt || '';
+    const separator = current.length > 0 && !current.endsWith('\n') && !current.endsWith(' ') ? ', ' : '';
+    updateEditingState({ prompt: `${current}${separator}${text}` });
   };
 
   const handleUndo = () => {
@@ -778,10 +816,35 @@ const App: React.FC = () => {
                         <button onClick={() => setGeneratedImageUrl(null)} className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black transition-colors"><RefreshCw size={18} /></button>
                       </div>
                     ) : isGeneratingImage ? (
-                      <div className="w-full aspect-square rounded-[2.5rem] bg-[var(--bg-element)] flex flex-col items-center justify-center border border-[var(--border)] animate-pulse">
-                        <div className="p-8 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] mb-6"><ImageIcon size={64} className="animate-bounce" /></div>
-                        <p className="text-xl font-black text-[var(--text-heading)] uppercase tracking-[0.2em]">Synthesizing Reality</p>
-                      </div>
+                      <div className="w-full aspect-square rounded-[2.5rem] bg-[var(--bg-element)] flex flex-col items-center justify-center border border-[var(--border)] relative overflow-hidden">
+                         {/* Animated Background */}
+                         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+                         
+                         <div className="z-10 flex flex-col items-center w-full max-w-xs space-y-6">
+                            <div className="relative">
+                                <div className="absolute inset-0 bg-[var(--accent)] blur-xl opacity-20 animate-pulse"></div>
+                                <ImageIcon size={64} className="text-[var(--accent)] relative z-10 animate-bounce" />
+                            </div>
+                            
+                            <div className="text-center space-y-2">
+                                <p className="text-xl font-black text-[var(--text-heading)] uppercase tracking-[0.2em] animate-pulse">Forging Reality</p>
+                                <p className="text-xs text-[var(--text-muted)] font-mono">Gemini 2.5 Flash • {aspectRatio}</p>
+                            </div>
+
+                            <div className="w-full space-y-2">
+                                <div className="h-1.5 w-full bg-[var(--bg-panel)] rounded-full overflow-hidden border border-[var(--border)]">
+                                    <div 
+                                        className="h-full bg-gradient-to-r from-[var(--accent)] to-purple-500 transition-all duration-300 ease-out"
+                                        style={{ width: `${generationProgress}%` }}
+                                    />
+                                </div>
+                                <div className="flex justify-between text-[10px] font-mono text-[var(--text-muted)]">
+                                    <span>Synthesizing...</span>
+                                    <span>{Math.round(generationProgress)}%</span>
+                                </div>
+                            </div>
+                         </div>
+                       </div>
                     ) : (
                       <div className="p-8 rounded-[2.5rem] bg-[var(--bg-panel)]/80 border border-[var(--border)] shadow-2xl relative group">
                         <div className="absolute right-6 top-6 flex items-center gap-2">
@@ -811,6 +874,29 @@ const App: React.FC = () => {
                     </div>
                     <button onClick={toggleCompareMode} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${isCompareMode ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-[var(--bg-element)] text-[var(--text-muted)] hover:bg-[var(--bg-element-hover)]'}`}>{isCompareMode ? 'Comparison On' : 'Compare Mode'}</button>
                   </div>
+
+                  {(selectedPrompt.category === 'AI Art Generation' || selectedPrompt.type === 'IMAGE') && !isGeneratingImage && (
+                    <div className="flex justify-center mb-6">
+                        <div className="inline-flex items-center p-1.5 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] gap-1">
+                            <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest px-3 flex items-center gap-2">
+                                <Layout size={12} /> Aspect Ratio
+                            </span>
+                            {(['1:1', '3:4', '4:3', '9:16', '16:9'] as const).map(ratio => (
+                                <button
+                                    key={ratio}
+                                    onClick={() => setAspectRatio(ratio)}
+                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all ${
+                                        aspectRatio === ratio 
+                                        ? 'bg-[var(--accent)] text-white shadow-md' 
+                                        : 'text-[var(--text-muted)] hover:bg-[var(--bg-panel)] hover:text-[var(--text-body)]'
+                                    }`}
+                                >
+                                    {ratio}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-20 w-full">
                     {selectedPrompt.category === 'AI Art Generation' || selectedPrompt.type === 'IMAGE' ? (
@@ -920,6 +1006,40 @@ const App: React.FC = () => {
               <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Instruction Matrix</label>
               <textarea required rows={6} className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm font-mono text-[var(--text-body)]" value={editingPrompt?.prompt || ''} onChange={e => updateEditingState({ prompt: e.target.value })} placeholder="System instructions..." />
             </div>
+
+            {editingPrompt?.category === 'AI Art Generation' && (
+              <div className="p-4 rounded-2xl bg-[var(--bg-element)]/30 border border-[var(--border)] space-y-4">
+                <h4 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2"><Wand2 size={12} /> Art Direction Helper</h4>
+                
+                <div className="space-y-2">
+                   <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Artistic Styles</span>
+                   <div className="flex flex-wrap gap-1.5">
+                     {ART_SUGGESTIONS.styles.map(s => (
+                       <button key={s} type="button" onClick={() => appendToPrompt(s)} className="px-2 py-1 rounded-md bg-[var(--bg-panel)] border border-[var(--border)] text-[10px] font-medium text-[var(--text-body)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all">+ {s}</button>
+                     ))}
+                   </div>
+                </div>
+
+                <div className="space-y-2">
+                   <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Lighting & Atmosphere</span>
+                   <div className="flex flex-wrap gap-1.5">
+                     {ART_SUGGESTIONS.lighting.map(s => (
+                       <button key={s} type="button" onClick={() => appendToPrompt(s)} className="px-2 py-1 rounded-md bg-[var(--bg-panel)] border border-[var(--border)] text-[10px] font-medium text-[var(--text-body)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all">+ {s}</button>
+                     ))}
+                   </div>
+                </div>
+
+                <div className="space-y-2">
+                   <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Technical Parameters</span>
+                   <div className="flex flex-wrap gap-1.5">
+                     {ART_SUGGESTIONS.params.map(s => (
+                       <button key={s} type="button" onClick={() => appendToPrompt(s)} className="px-2 py-1 rounded-md bg-[var(--bg-panel)] border border-[var(--border)] text-[10px] font-medium text-[var(--text-body)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all">{s}</button>
+                     ))}
+                   </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Tags (Autocomplete Active)</label>
               <div className="relative">
