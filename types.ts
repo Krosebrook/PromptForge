@@ -6,6 +6,14 @@ export interface PersonaVersion {
   prompt: string;
   description?: string;
   act: string;
+  tags?: string[];
+}
+
+export interface PromptDocument {
+  id: string;
+  name: string;
+  type: string;
+  data: string; // Base64
 }
 
 export interface PromptItem {
@@ -14,18 +22,29 @@ export interface PromptItem {
   prompt: string;
   description?: string;
   for_devs: boolean;
-  type: 'TEXT' | 'STRUCTURED' | 'IMAGE';
+  type: 'TEXT' | 'STRUCTURED' | 'IMAGE' | 'VIDEO';
   contributor: string;
   tags: string[];
   category: Category;
   isCustom?: boolean;
   versions?: PersonaVersion[];
+  documents?: PromptDocument[];
+  responseSchema?: string; // JSON Schema String
+}
+
+export interface MessageMetadata {
+  thinking?: string;
+  tokenCount?: number;
+  latency?: number;
+  groundingChunks?: any[];
+  searchEnabled?: boolean;
 }
 
 export interface Message {
   role: 'user' | 'model';
   text: string;
   timestamp: number;
+  metadata?: MessageMetadata;
 }
 
 export interface ChatSession {
@@ -35,9 +54,15 @@ export interface ChatSession {
   messages: Message[];
   startTime: number;
   lastUpdateTime: number;
-  // Metadata to distinguish sessions in history/compare mode
   modelId?: string; 
   isComparison?: boolean;
+}
+
+export interface PipelineConfig {
+  id: string;
+  name: string;
+  nodes: string[]; // List of prompt IDs
+  createdAt: number;
 }
 
 export interface SimulationSettings {
@@ -45,8 +70,10 @@ export interface SimulationSettings {
   temperature: number;
   topP: number;
   topK: number;
-  thinkingBudget: number; // Specific to Gemini 3 models
+  thinkingBudget: number;
   maxOutputTokens: number;
+  enableSearch?: boolean;
+  enableMaps?: boolean;
 }
 
 export interface Theme {
@@ -64,5 +91,20 @@ export interface Theme {
     '--accent': string;
     '--accent-hover': string;
     '--accent-text': string;
+  };
+}
+
+export interface UserProfile {
+  onboardingStatus: 'complete' | 'incomplete';
+  createdAt: string;
+  identity: {
+    role: 'Full Stack Dev' | 'Frontend Dev' | 'Backend Dev' | 'Data Scientist' | 'Product Designer' | 'Prompt Engineer';
+    expertise: 'Junior' | 'Senior' | 'Staff/Principal';
+    preferredStack: string[];
+  };
+  preferences: {
+    globalContext: string; // e.g. "Always use TypeScript", "Be concise"
+    autoSave: boolean;
+    privacyMode: 'Local' | 'Cloud';
   };
 }

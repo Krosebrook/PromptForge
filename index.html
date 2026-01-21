@@ -3,15 +3,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>PromptForge Pro - Professional AI Persona Library</title>
     <meta name="description" content="A high-performance library and playground for professional AI prompts.">
+    
+    <!-- PWA Primary Meta Tags -->
     <meta name="theme-color" content="#4f46e5">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="PromptForge">
+    <meta name="application-name" content="PromptForge Pro">
+    <meta name="msapplication-TileColor" content="#4f46e5">
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2103/2103633.png">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2103/2103633.png">
     <link rel="manifest" href="manifest.json">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,6 +30,7 @@
             font-family: 'Inter', sans-serif;
             background-color: #020617;
             color: #f8fafc;
+            overscroll-behavior-y: contain;
         }
         .font-mono {
             font-family: 'JetBrains Mono', monospace;
@@ -38,6 +48,16 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #475569;
         }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        /* Mobile Safe Areas */
+        .safe-pb {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .safe-pt {
+            padding-top: env(safe-area-inset-top);
+        }
     </style>
 <script type="importmap">
 {
@@ -51,7 +71,7 @@
 }
 </script>
 </head>
-<body class="antialiased">
-    <div id="root"></div>
+<body class="antialiased overflow-hidden h-screen w-screen">
+    <div id="root" class="h-full w-full"></div>
 </body>
 </html>

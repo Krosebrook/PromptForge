@@ -1,5 +1,6 @@
+
 import React, { useMemo } from 'react';
-import { Clock, RotateCcw, ChevronRight, FileText, Calendar, Trash2 } from 'lucide-react';
+import { Clock, RotateCcw, ChevronRight, FileText, Calendar, Trash2, GitCommit, Tag } from 'lucide-react';
 import { PersonaVersion } from './types';
 
 interface VersionHistoryProps {
@@ -8,12 +9,20 @@ interface VersionHistoryProps {
   onDelete: (index: number) => void;
 }
 
-// Improvement: Extracted EmptyState for better readability and separation of concerns.
 const EmptyState = () => (
-  <div className="mt-8 p-8 border-2 border-dashed border-[var(--border)] rounded-3xl text-center">
-    <Clock size={32} className="mx-auto text-[var(--text-muted)] opacity-20 mb-3" />
-    <p className="text-xs text-[var(--text-muted)] font-medium">No previous versions found for this persona.</p>
+  <div className="py-12 px-6 border-2 border-dashed border-[var(--border)] rounded-3xl text-center bg-[var(--bg-panel)]/30">
+    <div className="w-16 h-16 mx-auto rounded-full bg-[var(--bg-element)] flex items-center justify-center mb-4 text-[var(--text-muted)]">
+      <HistoryIcon size={32} opacity={0.5} />
+    </div>
+    <h5 className="text-sm font-bold text-[var(--text-heading)] mb-1">No Snapshots Yet</h5>
+    <p className="text-xs text-[var(--text-muted)] font-medium max-w-[200px] mx-auto">
+      Create a snapshot above to save the current state of your persona.
+    </p>
   </div>
+);
+
+const HistoryIcon = ({ size, opacity }: { size: number, opacity?: number }) => (
+  <Clock size={size} style={{ opacity }} />
 );
 
 interface VersionItemProps {
@@ -21,114 +30,118 @@ interface VersionItemProps {
   originalIndex: number;
   onRevert: (version: PersonaVersion) => void;
   onDelete: (index: number) => void;
+  isLast: boolean;
 }
 
-// Improvement: Extracted individual item to a sub-component to reduce render complexity of the parent
-// and isolate per-item logic (like date formatting).
-const VersionItem: React.FC<VersionItemProps> = ({ version, originalIndex, onRevert, onDelete }) => {
-  // Improvement: Date formatting is isolated here.
-  const dateString = new Date(version.timestamp).toLocaleString(undefined, { 
-    dateStyle: 'medium', 
-    timeStyle: 'short' 
-  });
+const VersionItem: React.FC<VersionItemProps> = ({ version, originalIndex, onRevert, onDelete, isLast }) => {
+  const dateObj = new Date(version.timestamp);
+  const dateString = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const timeString = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div 
-      className="group relative flex flex-col p-4 rounded-2xl bg-[var(--bg-element)]/30 border border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--bg-element)]/50 transition-all cursor-default"
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 text-[10px] font-mono text-[var(--text-muted)]">
-          <Calendar size={12} />
-          {dateString}
-        </div>
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-           <button 
-            type="button" 
-            onClick={() => onRevert(version)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--accent)] text-white text-[10px] font-bold uppercase tracking-wider hover:bg-[var(--accent-hover)] shadow-lg shadow-[var(--accent)]/20 transition-all"
-          >
-            <RotateCcw size={12} />
-            Restore
-          </button>
-          <button 
-            type="button" 
-            onClick={() => onDelete(originalIndex)}
-            className="p-1.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
-            title="Delete version"
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
+    <div className="relative pl-8 pb-8 group">
+      {/* Timeline Connector */}
+      {!isLast && (
+        <div className="absolute left-[11px] top-8 bottom-0 w-px bg-[var(--border)] group-hover:bg-[var(--accent)]/30 transition-colors" />
+      )}
+      
+      {/* Timeline Dot */}
+      <div className="absolute left-0 top-1 w-[22px] h-[22px] rounded-full bg-[var(--bg-app)] border-2 border-[var(--border)] group-hover:border-[var(--accent)] transition-colors flex items-center justify-center z-10">
+        <div className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] group-hover:bg-[var(--accent)] transition-colors" />
       </div>
 
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)] text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors">
-          <FileText size={14} />
+      <div className="flex flex-col gap-3">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs font-black text-[var(--text-heading)]">{version.act}</span>
+              <span className="text-[9px] font-mono text-[var(--text-muted)] bg-[var(--bg-element)] px-1.5 py-0.5 rounded border border-[var(--border)]">
+                {dateString} • {timeString}
+              </span>
+            </div>
+            {version.description && (
+              <p className="text-[10px] text-[var(--text-muted)] font-medium italic">
+                "{version.description}"
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button 
+              type="button" 
+              onClick={() => onRevert(version)}
+              className="p-2 rounded-lg bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white transition-all"
+              title="Restore this version"
+            >
+              <RotateCcw size={14} />
+            </button>
+            <button 
+              type="button" 
+              onClick={() => onDelete(originalIndex)}
+              className="p-2 rounded-lg hover:bg-red-500/10 hover:text-red-500 text-[var(--text-muted)] transition-all"
+              title="Delete snapshot"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <h5 className="text-sm font-bold text-[var(--text-heading)] truncate mb-0.5">
-            {version.act}
-          </h5>
-          <p className="text-xs text-[var(--text-muted)] line-clamp-1 italic">
-            {version.description || 'No summary provided for this revision.'}
+
+        {/* Content Preview */}
+        <div className="p-3 rounded-xl bg-[var(--bg-element)]/50 border border-[var(--border)] group-hover:border-[var(--accent)]/30 transition-all">
+          <p className="text-[10px] text-[var(--text-muted)] font-mono line-clamp-2 leading-relaxed opacity-80">
+            {version.prompt}
           </p>
         </div>
-      </div>
-      
-      <div className="mt-3 text-[11px] text-[var(--text-muted)] bg-[var(--bg-panel)]/50 p-3 rounded-xl font-mono line-clamp-2 leading-relaxed border border-transparent group-hover:border-[var(--border)] overflow-hidden">
-        {version.prompt}
-      </div>
 
-      <div className="absolute right-4 bottom-4 text-[var(--accent)] opacity-0 group-hover:opacity-10 transition-opacity">
-         <ChevronRight size={32} />
+        {/* Tags */}
+        {version.tags && version.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pl-1">
+            <Tag size={10} className="text-[var(--text-muted)] mt-0.5" />
+            {version.tags.map(tag => (
+              <span key={tag} className="text-[9px] text-[var(--text-muted)] hover:text-[var(--text-body)] transition-colors">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-// Improvement: Removed React.FC in favor of direct function declaration for better default props/generics support.
-export const VersionHistory = ({ versions, onRevert, onDelete }: VersionHistoryProps) => {
+export const VersionHistory: React.FC<VersionHistoryProps> = ({ versions, onRevert, onDelete }) => {
   if (!versions || versions.length === 0) {
     return <EmptyState />;
   }
 
-  // Improvement: useMemo prevents recalculating the array structure on every render.
-  // We map the original index *before* reversing so deletions target the correct item in the original array.
   const displayVersions = useMemo(() => {
     return versions.map((v, index) => ({ ...v, originalIndex: index })).reverse();
   }, [versions]);
 
   return (
-    <div className="mt-8 pt-6 border-t border-[var(--border)] animate-in fade-in slide-in-from-top-4 duration-500">
-      <div className="flex items-center justify-between mb-4 px-2">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-[var(--accent)]/10 text-[var(--accent)]">
-            <Clock size={16} />
-          </div>
-          <h4 className="text-xs font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">
-            Revision History
-          </h4>
-        </div>
-        <span className="text-[10px] font-bold text-[var(--text-muted)] bg-[var(--bg-element)] px-2 py-1 rounded-md uppercase tracking-wider">
-          {versions.length} {versions.length === 1 ? 'Snapshot' : 'Snapshots'}
-        </span>
+    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="flex items-center justify-between mb-6">
+         <h4 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2">
+            <GitCommit size={14} /> Version Timeline
+         </h4>
+         <span className="px-2 py-0.5 rounded-md bg-[var(--bg-element)] border border-[var(--border)] text-[9px] font-mono text-[var(--text-muted)]">
+            {versions.length} Total
+         </span>
       </div>
-
-      <div className="space-y-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar pb-4">
-        {displayVersions.map((v) => (
+      
+      <div className="relative pl-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+        {displayVersions.map((v, idx) => (
           <VersionItem 
             key={v.timestamp} 
             version={v} 
             originalIndex={v.originalIndex} 
             onRevert={onRevert} 
             onDelete={onDelete} 
+            isLast={idx === displayVersions.length - 1}
           />
         ))}
       </div>
-      
-      <p className="mt-4 text-[9px] text-[var(--text-muted)] text-center font-medium italic opacity-60">
-        * Restoring a snapshot will overwrite current editor contents. It is recommended to save your current work first.
-      </p>
     </div>
   );
 };
