@@ -6,6 +6,7 @@ import { geminiService } from './services/geminiService';
 import { ChatStreamView } from './ChatStreamView';
 import { SettingsModal } from './SettingsModal';
 import { PromptEditor } from './PromptEditor';
+import { PipelineEditor } from './PipelineEditor';
 import { Sidebar } from './Sidebar';
 import { OnboardingWizard } from './OnboardingWizard';
 import { TutorialOverlay } from './TutorialOverlay';
@@ -69,26 +70,18 @@ const App: React.FC = () => {
 
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState<{text: string, isUser: boolean}[]>([]);
-  const liveSessionRef = useRef<any>(null);
-  const liveTranscriptRef = useRef<HTMLDivElement>(null);
-
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
-  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
-  const [videoAspectRatio, setVideoAspectRatio] = useState<'16:9' | '9:16'>('16:9');
-
-  const [pipeline, setPipeline] = useState<string[]>([]);
+  
   const [savedPipelines, setSavedPipelines] = useState<PipelineConfig[]>(() => {
     const saved = localStorage.getItem('saved_pipelines');
     return saved ? JSON.parse(saved) : [];
   });
-  const [isPipelineRunning, setIsPipelineRunning] = useState(false);
-  const [pipelineProgress, setPipelineProgress] = useState(0);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
+  const selectedPipeline = useMemo(() => savedPipelines.find(p => p.id === selectedPipelineId) || null, [savedPipelines, selectedPipelineId]);
 
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSecondarySettingsOpen, setIsSecondarySettingsOpen] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<Partial<PromptItem> | null>(null);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
 
@@ -115,8 +108,6 @@ const App: React.FC = () => {
   }, []);
 
   const allPrompts = useMemo(() => [...PROMPTS_DATA, ...customPrompts], [customPrompts]);
-
-  // Fix: Defined allTags to aggregate all unique tags from prompts for the editor
   const allTags = useMemo(() => {
     const tags = new Set<string>();
     allPrompts.forEach(p => p.tags.forEach(t => tags.add(t)));
@@ -135,6 +126,7 @@ const App: React.FC = () => {
   const handleSelectPrompt = (prompt: PromptItem) => {
     setSelectedPrompt(prompt);
     setSelectedDocId(null);
+    setSelectedPipelineId(null);
     setPromptVariables({});
     setIsChatOpen(false);
     setCurrentSession(null);
@@ -143,6 +135,14 @@ const App: React.FC = () => {
   const handleSelectDoc = (docId: string) => {
     setSelectedDocId(docId);
     setSelectedPrompt(null);
+    setSelectedPipelineId(null);
+    setIsChatOpen(false);
+  };
+
+  const handleSelectPipeline = (id: string) => {
+    setSelectedPipelineId(id);
+    setSelectedPrompt(null);
+    setSelectedDocId(null);
     setIsChatOpen(false);
   };
 
@@ -180,7 +180,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fix: Implemented handleSendMessage to process user input and receive AI responses
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !currentSession || isLoading) return;
 
@@ -193,44 +192,23 @@ const App: React.FC = () => {
     setInputValue('');
     setIsLoading(true);
 
-    // Optimistically update sessions with user message
-    setCurrentSession(prev => prev ? ({
-      ...prev,
-      messages: [...prev.messages, userMessage],
-      lastUpdateTime: Date.now()
-    }) : null);
+    setCurrentSession(prev => prev ? ({ ...prev, messages: [...prev.messages, userMessage], lastUpdateTime: Date.now() }) : null);
 
     if (isCompareMode && secondarySession) {
-      setSecondarySession(prev => prev ? ({
-        ...prev,
-        messages: [...prev.messages, userMessage],
-        lastUpdateTime: Date.now()
-      }) : null);
+      setSecondarySession(prev => prev ? ({ ...prev, messages: [...prev.messages, userMessage], lastUpdateTime: Date.now() }) : null);
     }
 
     try {
       const tasks = [geminiService.sendMessage(chatRef.current, userMessage.text)];
-      if (isCompareMode && secondaryChatRef.current) {
-        tasks.push(geminiService.sendMessage(secondaryChatRef.current, userMessage.text));
-      }
+      if (isCompareMode && secondaryChatRef.current) tasks.push(geminiService.sendMessage(secondaryChatRef.current, userMessage.text));
 
       const [response, secondaryResponse] = await Promise.all(tasks);
       
-      const modelMessage: Message = {
-        role: 'model',
-        text: response.text,
-        timestamp: Date.now(),
-        metadata: response.metadata
-      };
+      const modelMessage: Message = { role: 'model', text: response.text, timestamp: Date.now(), metadata: response.metadata };
 
       setCurrentSession(prev => {
         if (!prev) return null;
-        const next = {
-          ...prev,
-          messages: [...prev.messages, modelMessage],
-          lastUpdateTime: Date.now()
-        };
-        
+        const next = { ...prev, messages: [...prev.messages, modelMessage], lastUpdateTime: Date.now() };
         setChatHistory(history => {
           const index = history.findIndex(s => s.id === next.id);
           if (index >= 0) {
@@ -240,22 +218,12 @@ const App: React.FC = () => {
           }
           return [next, ...history];
         });
-        
         return next;
       });
 
       if (isCompareMode && secondaryResponse) {
-        const secondaryModelMessage: Message = {
-          role: 'model',
-          text: secondaryResponse.text,
-          timestamp: Date.now(),
-          metadata: secondaryResponse.metadata
-        };
-        setSecondarySession(prev => prev ? ({
-          ...prev,
-          messages: [...prev.messages, secondaryModelMessage],
-          lastUpdateTime: Date.now()
-        }) : null);
+        const secondaryModelMessage: Message = { role: 'model', text: secondaryResponse.text, timestamp: Date.now(), metadata: secondaryResponse.metadata };
+        setSecondarySession(prev => prev ? ({ ...prev, messages: [...prev.messages, secondaryModelMessage], lastUpdateTime: Date.now() }) : null);
       }
     } catch (error) {
       console.error("Neural link error:", error);
@@ -264,26 +232,41 @@ const App: React.FC = () => {
     }
   };
 
+  const createNewPipeline = () => {
+    const newPipe: PipelineConfig = {
+      id: crypto.randomUUID(),
+      name: 'Untitled Pipeline',
+      flowState: { nodes: [], edges: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    setSavedPipelines(prev => [newPipe, ...prev]);
+    handleSelectPipeline(newPipe.id);
+  };
+
+  const handlePipelineSave = (updated: PipelineConfig) => {
+    setSavedPipelines(prev => prev.map(p => p.id === updated.id ? updated : p));
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-body)] transition-colors duration-300 select-none">
       {!userProfile && <OnboardingWizard onComplete={(p) => setUserProfile(p)} />}
-      
-      {tutorialStep !== null && (
-        <TutorialOverlay stepIndex={tutorialStep} steps={TUTORIAL_STEPS} onNext={() => tutorialStep < TUTORIAL_STEPS.length - 1 ? setTutorialStep(tutorialStep + 1) : setTutorialStep(null)} onPrev={() => setTutorialStep(tutorialStep - 1)} onClose={() => setTutorialStep(null)} />
-      )}
-
+      {tutorialStep !== null && <TutorialOverlay stepIndex={tutorialStep} steps={TUTORIAL_STEPS} onNext={() => tutorialStep < TUTORIAL_STEPS.length - 1 ? setTutorialStep(tutorialStep + 1) : setTutorialStep(null)} onPrev={() => setTutorialStep(tutorialStep - 1)} onClose={() => setTutorialStep(null)} />}
       <OnboardingAssistant isOpen={isAssistantOpen} onClose={() => setIsAssistantOpen(false)} userProfile={userProfile} />
       
       <Sidebar
         allPrompts={allPrompts}
         chatHistory={chatHistory}
         favorites={favorites}
+        savedPipelines={savedPipelines}
         currentView={view}
         onViewChange={setView}
         selectedPromptId={selectedPrompt?.id}
         selectedDocId={selectedDocId}
+        selectedPipelineId={selectedPipelineId}
         onSelectPrompt={handleSelectPrompt}
         onSelectDoc={handleSelectDoc}
+        onSelectPipeline={handleSelectPipeline}
         onResumeSession={(s) => { setSelectedPrompt(allPrompts.find(p => p.id === s.personaId) || null); setCurrentSession(s); setIsChatOpen(true); }}
         onToggleFavorite={(id) => setFavorites(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
         onDeleteSession={(e, id) => setChatHistory(prev => prev.filter(s => s.id !== id))}
@@ -292,6 +275,8 @@ const App: React.FC = () => {
         onImportPersona={() => {}}
         onExportData={() => {}}
         onNewPersona={() => { setEditingPrompt({ id: crypto.randomUUID(), category: 'Miscellaneous', type: 'TEXT' }); setIsEditorOpen(true); }}
+        onNewPipeline={createNewPipeline}
+        onDeletePipeline={(id, e) => { e.stopPropagation(); setSavedPipelines(prev => prev.filter(p => p.id !== id)); if (selectedPipelineId === id) setSelectedPipelineId(null); }}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenHelp={() => setIsAssistantOpen(true)}
         fileInputRef={useRef(null)}
@@ -321,7 +306,14 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {selectedDocument ? (
+        {selectedPipeline ? (
+          <PipelineEditor 
+            pipeline={selectedPipeline} 
+            allPrompts={allPrompts} 
+            onSave={handlePipelineSave} 
+            onClose={() => setSelectedPipelineId(null)}
+          />
+        ) : selectedDocument ? (
           <div className="flex-1 flex flex-col p-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
              <div className="max-w-4xl w-full mx-auto space-y-8">
                 <div className="flex items-center justify-between">

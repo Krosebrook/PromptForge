@@ -4,7 +4,8 @@ export type Category = 'Code Assistance' | 'AI Art Generation' | 'Writing & Cont
 export interface PersonaVersion {
   timestamp: number;
   prompt: string;
-  description?: string;
+  description?: string; // Snapshot note
+  personaDescription?: string; // The persona's 'Matrix Intent' at the time of snapshot
   act: string;
   tags?: string[];
 }
@@ -61,8 +62,12 @@ export interface ChatSession {
 export interface PipelineConfig {
   id: string;
   name: string;
-  nodes: string[]; // List of prompt IDs
+  flowState: {
+    nodes: any[];
+    edges: any[];
+  };
   createdAt: number;
+  updatedAt: number;
 }
 
 export interface SimulationSettings {

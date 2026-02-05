@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'promptforge-v2.1';
+const CACHE_NAME = 'promptforge-v2.3';
 
 // External assets that the app depends on for styling and logic
 const EXTERNAL_ASSETS = [
@@ -7,10 +7,13 @@ const EXTERNAL_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap',
   // Note: esm.sh imports often redirect, making precise caching tricky without a build step.
   // We cache the entry points to speed up subsequent loads.
-  'https://esm.sh/react@^19.2.3/',
-  'https://esm.sh/react-dom@^19.2.3/',
-  'https://esm.sh/lucide-react@^0.562.0',
+  'https://esm.sh/react@18.2.0',
+  'https://esm.sh/react-dom@18.2.0?deps=react@18.2.0',
+  'https://esm.sh/react-dom@18.2.0/client?deps=react@18.2.0',
+  'https://esm.sh/lucide-react@0.344.0?deps=react@18.2.0',
   'https://esm.sh/@google/genai@^1.34.0',
+  'https://esm.sh/reactflow@11.10.4?deps=react@18.2.0,react-dom@18.2.0',
+  'https://esm.sh/reactflow@11.10.4/dist/style.css',
   'https://cdn-icons-png.flaticon.com/512/2103/2103633.png'
 ];
 
@@ -27,6 +30,9 @@ const LOCAL_ASSETS = [
   '/OnboardingWizard.tsx',
   '/TutorialOverlay.tsx',
   '/VersionHistory.tsx',
+  '/SchemaBuilder.tsx',
+  '/PipelineEditor.tsx',
+  '/OnboardingAssistant.tsx',
   '/constants.ts',
   '/types.ts',
   '/documentation.ts',

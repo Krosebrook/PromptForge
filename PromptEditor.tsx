@@ -4,6 +4,7 @@ import { Modal } from './Modal';
 import { PromptItem, PersonaVersion, Category, PromptDocument } from './types';
 import { CATEGORIES } from './constants';
 import { VersionHistory } from './VersionHistory';
+import { SchemaBuilder } from './SchemaBuilder';
 import { geminiService } from './services/geminiService';
 import { 
   Undo2, Redo2, Wand2, Save, Download, LayoutTemplate, Hash, 
@@ -39,6 +40,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [showTagSuccess, setShowTagSuccess] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<PromptDocument | null>(null);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,6 +116,11 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
     return allTags.filter(t => t.toLowerCase().includes(currentTagFragment) && !existing.has(t)).slice(0, 5);
   }, [allTags, currentTagFragment, editingPrompt?.tags]);
 
+  // Reset selection when input changes
+  useEffect(() => {
+    setSelectedSuggestionIndex(-1);
+  }, [tagInput]);
+
   const injectSuggestedTag = (tag: string) => {
     const parts = tagInput.split(',').map(p => p.trim());
     parts[parts.length - 1] = tag;
@@ -122,6 +129,26 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
     updateEditingState({ tags: finalVal.split(',').map(t => t.trim()).filter(Boolean) });
     setShowTagSuccess(tag);
     setTimeout(() => setShowTagSuccess(null), 1000);
+    setSelectedSuggestionIndex(-1);
+  };
+
+  const handleTagKeyDown = (e: React.KeyboardEvent) => {
+    if (tagSuggestions.length > 0) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => (prev <= 0 ? tagSuggestions.length - 1 : prev - 1));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => (prev >= tagSuggestions.length - 1 ? 0 : prev + 1));
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+         if (selectedSuggestionIndex !== -1) {
+            e.preventDefault();
+            injectSuggestedTag(tagSuggestions[selectedSuggestionIndex]);
+         }
+      } else if (e.key === 'Escape') {
+        setSelectedSuggestionIndex(-1);
+      }
+    }
   };
 
   return (
@@ -167,14 +194,30 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                   </div>
                   <div className="space-y-1.5 relative">
                     <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2"><Hash size={12} /> Semantic Tags</label>
-                    <input className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-xs" value={tagInput} onChange={e => { setTagInput(e.target.value); updateEditingState({ tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) }); }} placeholder="web, react, senior..." />
+                    <input 
+                      className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-xs" 
+                      value={tagInput} 
+                      onChange={e => { setTagInput(e.target.value); updateEditingState({ tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) }); }} 
+                      onKeyDown={handleTagKeyDown}
+                      placeholder="web, react, senior..." 
+                    />
                     {tagSuggestions.length > 0 && (
-                      <div className="absolute bottom-full left-0 right-0 mb-2 bg-[var(--bg-panel)] border border-[var(--border)] rounded-xl shadow-2xl z-20 p-2 flex flex-wrap gap-2 animate-in slide-in-from-bottom-2">
+                      <div className="absolute bottom-full left-0 right-0 mb-2 bg-[var(--bg-panel)] border border-[var(--border)] rounded-xl shadow-2xl z-20 p-2 flex flex-col gap-1 animate-in slide-in-from-bottom-2">
                          {tagSuggestions.map(tag => (
-                            <button key={tag} type="button" onClick={() => injectSuggestedTag(tag)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--bg-element)] hover:bg-[var(--accent)] text-[10px] font-bold text-[var(--text-muted)] hover:text-white transition-all border border-[var(--border)]">#{tag}</button>
+                            <button 
+                              key={tag} 
+                              type="button" 
+                              onClick={() => injectSuggestedTag(tag)} 
+                              onMouseEnter={() => setSelectedSuggestionIndex(tagSuggestions.indexOf(tag))}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[10px] font-bold transition-all text-left ${selectedSuggestionIndex === tagSuggestions.indexOf(tag) ? 'bg-[var(--accent)] text-white' : 'hover:bg-[var(--bg-element)] text-[var(--text-muted)]'}`}
+                            >
+                              <Hash size={10} className={selectedSuggestionIndex === tagSuggestions.indexOf(tag) ? 'text-white' : 'text-[var(--accent)]'} />
+                              {tag}
+                            </button>
                          ))}
                       </div>
                     )}
+                    {showTagSuccess && <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[10px] font-bold text-emerald-500 animate-out fade-out fill-mode-forwards duration-1000"><Check size={12} /> Added</div>}
                   </div>
                 </div>
               )}
@@ -205,15 +248,33 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                 </div>
               )}
               {activeTab === 'structure' && (
-                <div className="space-y-4 animate-in fade-in duration-300">
-                   <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium">Define a JSON Schema to force structured model outputs.</div>
-                   <textarea className="w-full h-[300px] px-5 py-4 rounded-3xl bg-[var(--bg-element)] border border-[var(--border)] font-mono text-xs leading-relaxed" value={editingPrompt?.responseSchema || ''} onChange={e => updateEditingState({ responseSchema: e.target.value })} placeholder={`{ "type": "OBJECT", "properties": { ... } }`} />
+                <div className="space-y-4 animate-in fade-in duration-300 h-[500px] flex flex-col">
+                   <SchemaBuilder 
+                      value={editingPrompt?.responseSchema || ''} 
+                      onChange={(val) => updateEditingState({ responseSchema: val })} 
+                   />
                 </div>
               )}
               {activeTab === 'versions' && (
                 <div className="space-y-6 animate-in fade-in duration-300">
-                   <div className="flex gap-3"><input className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)] text-xs" placeholder="Describe this state..." value={snapshotDesc} onChange={(e) => setSnapshotDesc(e.target.value)} /><button type="button" onClick={() => { if(!editingPrompt?.prompt) return; const v: PersonaVersion = { timestamp: Date.now(), prompt: editingPrompt.prompt, act: editingPrompt.act || 'Untitled', description: snapshotDesc || 'Snapshot', tags: editingPrompt.tags || [] }; updateEditingState({ versions: [v, ...(editingPrompt.versions || [])] }); setSnapshotDesc(''); }} className="px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white font-bold uppercase text-[10px] tracking-widest shadow-lg">Snapshot</button></div>
-                   <VersionHistory versions={editingPrompt?.versions || []} onRevert={(v) => { updateEditingState({ prompt: v.prompt, act: v.act, tags: v.tags }); if (v.tags) setTagInput(v.tags.join(', ')); }} onDelete={(idx) => { const vs = [...(editingPrompt.versions || [])]; vs.splice(idx, 1); updateEditingState({ versions: vs }); }} />
+                   <div className="flex gap-3"><input className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)] text-xs" placeholder="Describe this state..." value={snapshotDesc} onChange={(e) => setSnapshotDesc(e.target.value)} /><button type="button" onClick={() => { if(!editingPrompt?.prompt) return; const v: PersonaVersion = { timestamp: Date.now(), prompt: editingPrompt.prompt, act: editingPrompt.act || 'Untitled', description: snapshotDesc || 'Snapshot', personaDescription: editingPrompt.description, tags: editingPrompt.tags || [] }; updateEditingState({ versions: [v, ...(editingPrompt.versions || [])] }); setSnapshotDesc(''); }} className="px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white font-bold uppercase text-[10px] tracking-widest shadow-lg hover:bg-[var(--accent-hover)] transition-all">Snapshot</button></div>
+                   <VersionHistory 
+                     versions={editingPrompt?.versions || []} 
+                     onRevert={(v) => { 
+                       updateEditingState({ 
+                         prompt: v.prompt, 
+                         act: v.act, 
+                         tags: v.tags,
+                         description: v.personaDescription || editingPrompt.description 
+                       }); 
+                       if (v.tags) setTagInput(v.tags.join(', ')); 
+                     }} 
+                     onDelete={(idx) => { 
+                       const vs = [...(editingPrompt.versions || [])]; 
+                       vs.splice(idx, 1); 
+                       updateEditingState({ versions: vs }); 
+                     }} 
+                   />
                 </div>
               )}
               <div className="pt-4 border-t border-[var(--border)] sticky bottom-0 bg-[var(--bg-panel)] pb-2">

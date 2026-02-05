@@ -30,7 +30,37 @@ navigator.serviceWorker.ready.then(registration => {
 \`\`\`
 
 ## 5. Deployment
-When deploying updates, ensure \`service-worker.js\` is served with \`Cache-Control: no-cache\` to allow the browser to detect updates to the worker script itself.`,
+When deploying updates, ensure \`service-worker.js\` is served with \`Cache-Control: no-cache\` to allow the browser to detect updates to the worker script itself.
+
+## 6. Advanced Lifecycle Monitoring
+To track the service worker installation and activation process in real-time, execute this snippet in the console:
+\`\`\`js
+navigator.serviceWorker.register('/service-worker.js').then(reg => {
+  reg.addEventListener('updatefound', () => {
+    const newWorker = reg.installing;
+    console.log('SW: Update detected', newWorker);
+    newWorker.addEventListener('statechange', () => {
+      console.log('SW State Change:', newWorker.state);
+    });
+  });
+});
+\`\`\`
+
+## 7. Emergency Cache Reset
+Use this script to completely wipe the PWA state (Unregister SW + Delete Caches) for a clean slate test:
+\`\`\`js
+// Unregister all workers
+navigator.serviceWorker.getRegistrations().then(regs => {
+  for (let reg of regs) reg.unregister();
+  console.log('SW: Unregistered all workers');
+});
+
+// Delete all caches
+caches.keys().then(names => {
+  for (let name of names) caches.delete(name);
+  console.log('SW: Deleted all caches');
+});
+\`\`\``,
   'AGENTS_DOCUMENTATION_AUTHORITY.md': `# Agents Documentation Authority
 Details the architecture and implementation of the AI-driven Documentation Authority system.`,
   'SECURITY.md': `# Security Overview
