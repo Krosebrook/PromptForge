@@ -82,6 +82,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTarget, setSettingsTarget] = useState<'primary' | 'secondary'>('primary');
   const [editingPrompt, setEditingPrompt] = useState<Partial<PromptItem> | null>(null);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
 
@@ -170,13 +171,15 @@ const App: React.FC = () => {
       setSecondarySession({
         id: crypto.randomUUID(),
         personaId: selectedPrompt.id,
-        personaName: `${selectedPrompt.act} (Pro Branch)`,
+        personaName: `${selectedPrompt.act} (Compare)`,
         messages: [{ role: 'model', text: `Parallel branch initiated with ${secondarySettings.model}.`, timestamp: Date.now() }],
         startTime: Date.now(),
         lastUpdateTime: Date.now(),
         modelId: secondarySettings.model,
         isComparison: true
       });
+    } else {
+      setSecondarySession(null);
     }
   };
 
@@ -248,6 +251,11 @@ const App: React.FC = () => {
     setSavedPipelines(prev => prev.map(p => p.id === updated.id ? updated : p));
   };
 
+  const openSettings = (target: 'primary' | 'secondary' = 'primary') => {
+    setSettingsTarget(target);
+    setIsSettingsOpen(true);
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-body)] transition-colors duration-300 select-none">
       {!userProfile && <OnboardingWizard onComplete={(p) => setUserProfile(p)} />}
@@ -277,7 +285,7 @@ const App: React.FC = () => {
         onNewPersona={() => { setEditingPrompt({ id: crypto.randomUUID(), category: 'Miscellaneous', type: 'TEXT' }); setIsEditorOpen(true); }}
         onNewPipeline={createNewPipeline}
         onDeletePipeline={(id, e) => { e.stopPropagation(); setSavedPipelines(prev => prev.filter(p => p.id !== id)); if (selectedPipelineId === id) setSelectedPipelineId(null); }}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => openSettings('primary')}
         onOpenHelp={() => setIsAssistantOpen(true)}
         fileInputRef={useRef(null)}
         isInstallable={!!deferredPrompt}
@@ -360,11 +368,23 @@ const App: React.FC = () => {
                    <button onClick={() => setIsChatOpen(false)} className="p-2 rounded-xl hover:bg-[var(--bg-element)] text-[var(--text-muted)] transition-colors"><ArrowLeft size={20} /></button>
                    <div>
                       <h3 className="font-bold text-[var(--text-heading)] flex items-center gap-2">{currentSession?.personaName}</h3>
-                      <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-widest">{settings.model}</p>
+                      <div className="flex gap-2">
+                         <button onClick={() => openSettings('primary')} className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-widest hover:text-[var(--accent)] flex items-center gap-1">
+                            {settings.model} <Settings2 size={10} />
+                         </button>
+                         {isCompareMode && (
+                           <>
+                             <span className="text-[10px] text-[var(--text-muted)]">|</span>
+                             <button onClick={() => openSettings('secondary')} className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-widest hover:text-[var(--accent)] flex items-center gap-1">
+                                {secondarySettings.model} <Settings2 size={10} />
+                             </button>
+                           </>
+                         )}
+                      </div>
                    </div>
                 </div>
              </div>
-             <div className="flex-1 flex overflow-hidden">
+             <div className="flex-1 flex overflow-hidden relative">
                 <div className={`flex-1 flex flex-col min-w-0 ${isCompareMode ? 'border-r border-[var(--border)]' : ''}`}>
                    <ChatStreamView session={currentSession} settings={settings} isLoading={isLoading} />
                 </div>
@@ -390,7 +410,17 @@ const App: React.FC = () => {
       </div>
 
       <PromptEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} initialPrompt={editingPrompt} onSave={(p) => { setCustomPrompts(prev => prev.find(x => x.id === p.id) ? prev.map(x => x.id === p.id ? p : x) : [p, ...prev]); setIsEditorOpen(false); }} onSaveAsTemplate={(p) => setTemplates(prev => [...prev, p])} allTags={allTags} allTemplates={templates} />
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={settings} onSettingsChange={setSettings} target="primary" currentThemeId={currentThemeId} onThemeChange={setCurrentThemeId} userProfile={userProfile} onResetProfile={() => { setUserProfile(null); setIsSettingsOpen(false); }} />
+      <SettingsModal 
+         isOpen={isSettingsOpen} 
+         onClose={() => setIsSettingsOpen(false)} 
+         settings={settingsTarget === 'primary' ? settings : secondarySettings} 
+         onSettingsChange={settingsTarget === 'primary' ? setSettings : setSecondarySettings}
+         target={settingsTarget}
+         currentThemeId={currentThemeId} 
+         onThemeChange={setCurrentThemeId} 
+         userProfile={userProfile} 
+         onResetProfile={() => { setUserProfile(null); setIsSettingsOpen(false); }} 
+      />
     </div>
   );
 };
