@@ -25,29 +25,29 @@ export const OnboardingAssistant: React.FC<OnboardingAssistantProps> = ({ isOpen
   useEffect(() => {
     if (isOpen && messages.length === 0) {
       const greeting = userProfile 
-        ? `Systems online. Welcome back, ${userProfile.identity.role}. I am your Neural Onboarding Guide. How can I assist with your ${userProfile.identity.expertise}-level engineering today?`
-        : "Neural Link established. I am the PromptForge Onboarding Assistant. Ask me anything about our Persona Library, Pipeline Graph, or Model Parameters.";
+        ? `Neural Guide active. Hello, ${userProfile.identity.role}. I am ready to assist with your ${userProfile.identity.expertise}-level engineering tasks.`
+        : "Neural Guide active. I can help you navigate the Persona Library, build Pipelines, or configure Model Parameters.";
       setMessages([{ role: 'assistant', text: greeting }]);
       
       const systemInstruction = `
-        You are the PromptForge Pro Onboarding Assistant.
-        Your goal is to help users navigate this professional AI Persona Library.
+        You are the PromptForge Pro Neural Guide.
+        Your goal is to help users utilize this professional AI Persona IDE.
         
         KEY FEATURES YOU KNOW ABOUT:
-        - LIBRARY: A collection of 20+ specialized personas (Senior React Architect, Vibe Coder, etc.).
+        - LIBRARY: A collection of specialized personas (Senior React Architect, Vibe Coder, etc.).
+        - IDENTITY: Users can configure their Role, Stack, and Global Context in Settings > Identity.
         - COMPARE MODE: Run two models (Flash vs Pro) side-by-side to compare outputs.
         - PIPELINE GRAPH: Chain multiple personas together where the output of A becomes the input of B.
         - VEO VIDEO: Generate AI video using Google's Veo model.
         - THINKING BUDGET: Allocate tokens for internal Chain of Thought reasoning.
-        - VIBE CODING: A modern approach to AI development focusing on high-level intent over verbose specs.
         
         USER CONTEXT:
-        - Role: ${userProfile?.identity.role || 'New User'}
-        - Expertise: ${userProfile?.identity.expertise || 'Uncalibrated'}
-        - Stack: ${userProfile?.identity.preferredStack?.join(', ') || 'General'}
+        - Role: ${userProfile?.identity.role || 'User'}
+        - Expertise: ${userProfile?.identity.expertise || 'General'}
+        - Stack: ${userProfile?.identity.preferredStack?.join(', ') || 'None'}
         
         TONE:
-        Keep responses concise, technical, and helpful. Use monospaced formatting for key terms.
+        Keep responses concise, technical, and professional. Use monospaced formatting for key terms.
       `;
       chatRef.current = geminiService.createChat(systemInstruction, {
         model: 'gemini-3-flash-preview',

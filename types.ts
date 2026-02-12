@@ -46,6 +46,7 @@ export interface Message {
   text: string;
   timestamp: number;
   metadata?: MessageMetadata;
+  videoUrl?: string;
 }
 
 export interface ChatSession {

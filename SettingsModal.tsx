@@ -13,8 +13,8 @@ interface SettingsModalProps {
   target: 'primary' | 'secondary';
   currentThemeId: string;
   onThemeChange: (id: string) => void;
-  userProfile?: UserProfile | null;
-  onResetProfile?: () => void;
+  userProfile: UserProfile;
+  onProfileChange: (profile: UserProfile) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -26,7 +26,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentThemeId,
   onThemeChange,
   userProfile,
-  onResetProfile
+  onProfileChange
 }) => {
   const [activeTab, setActiveTab] = useState<'theme' | 'model' | 'params' | 'identity'>('theme');
 
@@ -34,13 +34,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onSettingsChange({ ...settings, [key]: value });
   };
 
+  const updateIdentity = (field: keyof UserProfile['identity'], value: any) => {
+    onProfileChange({
+      ...userProfile,
+      identity: { ...userProfile.identity, [field]: value }
+    });
+  };
+
+  const updatePreferences = (field: keyof UserProfile['preferences'], value: any) => {
+    onProfileChange({
+      ...userProfile,
+      preferences: { ...userProfile.preferences, [field]: value }
+    });
+  };
+
+  const ROLES = ['Full Stack Dev', 'Frontend Dev', 'Backend Dev', 'Data Scientist', 'Product Designer', 'Prompt Engineer'];
+  const LEVELS = ['Junior', 'Senior', 'Staff/Principal'];
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Simulation Config (${target === 'primary' ? 'A' : 'B'})`}>
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 p-1 mb-6 bg-[var(--bg-element)]/50 rounded-xl border border-[var(--border)] shrink-0">
         <button onClick={() => setActiveTab('theme')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${activeTab === 'theme' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-body)]'}`}><Palette size={14} /> Theme</button>
         <button onClick={() => setActiveTab('model')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${activeTab === 'model' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-body)]'}`}><BrainCircuit size={14} /> Model</button>
         <button onClick={() => setActiveTab('params')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${activeTab === 'params' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-body)]'}`}><Sliders size={14} /> Params</button>
-        {userProfile && <button onClick={() => setActiveTab('identity')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${activeTab === 'identity' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-body)]'}`}><User size={14} /> Identity</button>}
+        <button onClick={() => setActiveTab('identity')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${activeTab === 'identity' ? 'bg-[var(--bg-panel)] text-[var(--text-heading)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-body)]'}`}><User size={14} /> Identity</button>
       </div>
 
       <div className="space-y-6 min-h-[440px]">
@@ -140,19 +157,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         )}
 
-        {activeTab === 'identity' && userProfile && (
+        {activeTab === 'identity' && (
            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="space-y-3">
-                 <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)]">
-                    <div className="flex items-center gap-3"><User size={16} className="text-[var(--text-muted)]" /><span className="text-xs font-bold text-[var(--text-heading)]">Role</span></div>
-                    <span className="text-xs font-mono text-[var(--accent)] uppercase">{userProfile.identity.role}</span>
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-1.5">
+                   <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Operative Role</label>
+                   <select className="w-full px-4 py-3 rounded-xl bg-[var(--bg-element)] border border-[var(--border)] text-xs font-bold appearance-none outline-none focus:border-[var(--accent)]" value={userProfile.identity.role} onChange={(e) => updateIdentity('role', e.target.value)}>
+                     {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                   </select>
                  </div>
-                 <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-panel)] border border-[var(--border)]">
-                    <div className="flex items-center gap-3"><Shield size={16} className="text-[var(--text-muted)]" /><span className="text-xs font-bold text-[var(--text-heading)]">Expertise</span></div>
-                    <span className="text-xs font-mono text-emerald-400">{userProfile.identity.expertise}</span>
+                 <div className="space-y-1.5">
+                   <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Expertise</label>
+                   <select className="w-full px-4 py-3 rounded-xl bg-[var(--bg-element)] border border-[var(--border)] text-xs font-bold appearance-none outline-none focus:border-[var(--accent)]" value={userProfile.identity.expertise} onChange={(e) => updateIdentity('expertise', e.target.value)}>
+                     {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                   </select>
                  </div>
               </div>
-              <button onClick={onResetProfile} className="w-full py-4 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2"><RefreshCw size={14} /> Recalibrate Identity</button>
+              
+              <div className="space-y-1.5">
+                 <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Tech Stack (Context Injection)</label>
+                 <input 
+                    className="w-full px-4 py-3 rounded-xl bg-[var(--bg-element)] border border-[var(--border)] text-xs font-mono focus:border-[var(--accent)] outline-none" 
+                    value={userProfile.identity.preferredStack.join(', ')} 
+                    onChange={(e) => updateIdentity('preferredStack', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                    placeholder="e.g. React, TypeScript, Tailwind" 
+                 />
+              </div>
+
+              <div className="space-y-1.5">
+                 <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Global System Context</label>
+                 <textarea 
+                    className="w-full px-4 py-3 rounded-xl bg-[var(--bg-element)] border border-[var(--border)] text-xs font-mono focus:border-[var(--accent)] outline-none min-h-[100px] leading-relaxed" 
+                    value={userProfile.preferences.globalContext} 
+                    onChange={(e) => updatePreferences('globalContext', e.target.value)}
+                    placeholder="Instructions applied to ALL sessions (e.g. 'Always use concise code', 'Prefer FP patterns')" 
+                 />
+              </div>
            </div>
         )}
       </div>

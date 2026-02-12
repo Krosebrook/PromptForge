@@ -8,7 +8,6 @@ import { SettingsModal } from './SettingsModal';
 import { PromptEditor } from './PromptEditor';
 import { PipelineEditor } from './PipelineEditor';
 import { Sidebar } from './Sidebar';
-import { OnboardingWizard } from './OnboardingWizard';
 import { TutorialOverlay } from './TutorialOverlay';
 import { OnboardingAssistant } from './OnboardingAssistant';
 import { 
@@ -20,9 +19,22 @@ import {
 } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('user_profile');
-    return saved ? JSON.parse(saved) : null;
+    return saved ? JSON.parse(saved) : {
+      onboardingStatus: 'complete',
+      createdAt: new Date().toISOString(),
+      identity: {
+        role: 'Full Stack Dev',
+        expertise: 'Senior',
+        preferredStack: ['React', 'TypeScript', 'Tailwind', 'Node.js']
+      },
+      preferences: {
+        globalContext: 'Be concise, technical, and prefer functional programming patterns.',
+        autoSave: true,
+        privacyMode: 'Local'
+      }
+    };
   });
 
   const [customPrompts, setCustomPrompts] = useState<PromptItem[]>(() => {
@@ -100,7 +112,8 @@ const App: React.FC = () => {
     localStorage.setItem('chat_history', JSON.stringify(chatHistory));
     localStorage.setItem('saved_pipelines', JSON.stringify(savedPipelines));
     localStorage.setItem('custom_templates', JSON.stringify(templates));
-  }, [settings, customPrompts, chatHistory, savedPipelines, templates]);
+    localStorage.setItem('user_profile', JSON.stringify(userProfile));
+  }, [settings, customPrompts, chatHistory, savedPipelines, templates, userProfile]);
 
   useEffect(() => {
     const handler = (e: any) => { e.preventDefault(); setDeferredPrompt(e); };
@@ -202,34 +215,64 @@ const App: React.FC = () => {
     }
 
     try {
-      const tasks = [geminiService.sendMessage(chatRef.current, userMessage.text)];
-      if (isCompareMode && secondaryChatRef.current) tasks.push(geminiService.sendMessage(secondaryChatRef.current, userMessage.text));
-
-      const [response, secondaryResponse] = await Promise.all(tasks);
-      
-      const modelMessage: Message = { role: 'model', text: response.text, timestamp: Date.now(), metadata: response.metadata };
-
-      setCurrentSession(prev => {
-        if (!prev) return null;
-        const next = { ...prev, messages: [...prev.messages, modelMessage], lastUpdateTime: Date.now() };
-        setChatHistory(history => {
-          const index = history.findIndex(s => s.id === next.id);
-          if (index >= 0) {
-            const h = [...history];
-            h[index] = next;
-            return h;
-          }
-          return [next, ...history];
+      // Logic split: If prompt is VIDEO type, call generateVideo instead of chat
+      if (selectedPrompt?.type === 'VIDEO') {
+        const videoUrl = await geminiService.generateVideo(userMessage.text);
+        const modelMessage: Message = { 
+          role: 'model', 
+          text: `Video generated based on prompt: "${userMessage.text}"`, 
+          timestamp: Date.now(), 
+          videoUrl,
+          metadata: { latency: 0 } // Video generation latency not tracked precisely here yet
+        };
+        
+        setCurrentSession(prev => {
+          if (!prev) return null;
+          const next = { ...prev, messages: [...prev.messages, modelMessage], lastUpdateTime: Date.now() };
+          // Update history logic duplicated for safety
+          setChatHistory(history => {
+            const index = history.findIndex(s => s.id === next.id);
+            if (index >= 0) { const h = [...history]; h[index] = next; return h; }
+            return [next, ...history];
+          });
+          return next;
         });
-        return next;
-      });
+      } else {
+        const tasks = [geminiService.sendMessage(chatRef.current, userMessage.text)];
+        if (isCompareMode && secondaryChatRef.current) tasks.push(geminiService.sendMessage(secondaryChatRef.current, userMessage.text));
 
-      if (isCompareMode && secondaryResponse) {
-        const secondaryModelMessage: Message = { role: 'model', text: secondaryResponse.text, timestamp: Date.now(), metadata: secondaryResponse.metadata };
-        setSecondarySession(prev => prev ? ({ ...prev, messages: [...prev.messages, secondaryModelMessage], lastUpdateTime: Date.now() }) : null);
+        const [response, secondaryResponse] = await Promise.all(tasks);
+        
+        const modelMessage: Message = { role: 'model', text: response.text, timestamp: Date.now(), metadata: response.metadata };
+
+        setCurrentSession(prev => {
+          if (!prev) return null;
+          const next = { ...prev, messages: [...prev.messages, modelMessage], lastUpdateTime: Date.now() };
+          setChatHistory(history => {
+            const index = history.findIndex(s => s.id === next.id);
+            if (index >= 0) {
+              const h = [...history];
+              h[index] = next;
+              return h;
+            }
+            return [next, ...history];
+          });
+          return next;
+        });
+
+        if (isCompareMode && secondaryResponse) {
+          const secondaryModelMessage: Message = { role: 'model', text: secondaryResponse.text, timestamp: Date.now(), metadata: secondaryResponse.metadata };
+          setSecondarySession(prev => prev ? ({ ...prev, messages: [...prev.messages, secondaryModelMessage], lastUpdateTime: Date.now() }) : null);
+        }
       }
     } catch (error) {
       console.error("Neural link error:", error);
+      const errorMessage: Message = { 
+         role: 'model', 
+         text: `[System Error]: ${error instanceof Error ? error.message : 'Unknown failure'}`, 
+         timestamp: Date.now() 
+      };
+      setCurrentSession(prev => prev ? ({ ...prev, messages: [...prev.messages, errorMessage], lastUpdateTime: Date.now() }) : null);
     } finally {
       setIsLoading(false);
     }
@@ -251,6 +294,19 @@ const App: React.FC = () => {
     setSavedPipelines(prev => prev.map(p => p.id === updated.id ? updated : p));
   };
 
+  const handleDownloadSession = (e: React.MouseEvent, session: ChatSession) => {
+    e.stopPropagation();
+    const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `session-${session.personaName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date(session.startTime).toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const openSettings = (target: 'primary' | 'secondary' = 'primary') => {
     setSettingsTarget(target);
     setIsSettingsOpen(true);
@@ -258,7 +314,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-body)] transition-colors duration-300 select-none">
-      {!userProfile && <OnboardingWizard onComplete={(p) => setUserProfile(p)} />}
       {tutorialStep !== null && <TutorialOverlay stepIndex={tutorialStep} steps={TUTORIAL_STEPS} onNext={() => tutorialStep < TUTORIAL_STEPS.length - 1 ? setTutorialStep(tutorialStep + 1) : setTutorialStep(null)} onPrev={() => setTutorialStep(tutorialStep - 1)} onClose={() => setTutorialStep(null)} />}
       <OnboardingAssistant isOpen={isAssistantOpen} onClose={() => setIsAssistantOpen(false)} userProfile={userProfile} />
       
@@ -278,7 +333,7 @@ const App: React.FC = () => {
         onResumeSession={(s) => { setSelectedPrompt(allPrompts.find(p => p.id === s.personaId) || null); setCurrentSession(s); setIsChatOpen(true); }}
         onToggleFavorite={(id) => setFavorites(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
         onDeleteSession={(e, id) => setChatHistory(prev => prev.filter(s => s.id !== id))}
-        onDownloadSession={() => {}}
+        onDownloadSession={handleDownloadSession}
         onClearAllHistory={() => setChatHistory([])}
         onImportPersona={() => {}}
         onExportData={() => {}}
@@ -419,7 +474,7 @@ const App: React.FC = () => {
          currentThemeId={currentThemeId} 
          onThemeChange={setCurrentThemeId} 
          userProfile={userProfile} 
-         onResetProfile={() => { setUserProfile(null); setIsSettingsOpen(false); }} 
+         onProfileChange={setUserProfile}
       />
     </div>
   );

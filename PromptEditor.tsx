@@ -9,7 +9,8 @@ import { geminiService } from './services/geminiService';
 import { 
   Undo2, Redo2, Wand2, Save, Download, LayoutTemplate, Hash, 
   Camera, Sparkles, Database, FileText, Code, Settings2,
-  Upload, X, Loader2, Braces, History, Copy, Palette, Check, Eye
+  Upload, X, Loader2, Braces, History, Copy, Palette, Check, Eye,
+  Paintbrush
 } from 'lucide-react';
 
 interface PromptEditorProps {
@@ -21,6 +22,13 @@ interface PromptEditorProps {
   allTags: string[];
   allTemplates: any[];
 }
+
+const ART_PRESETS = {
+  Styles: ['Photorealistic', 'Anime', 'Oil Painting', 'Cyberpunk', 'Watercolor', 'Pixel Art', '3D Render', 'Noir', 'Vector Illustration', 'Synthwave'],
+  Lighting: ['Cinematic Lighting', 'Natural Light', 'Neon Lights', 'Golden Hour', 'Studio Lighting', 'Volumetric Fog', 'Bioluminescent'],
+  Camera: ['Wide Angle', 'Telephoto', 'Macro', 'Bokeh', 'Fish-eye', 'Drone View'],
+  Params: ['--ar 16:9', '--ar 9:16', '--ar 1:1', '--v 6.0', '--style raw', '--chaos 10', '--stylize 100']
+};
 
 export const PromptEditor: React.FC<PromptEditorProps> = ({
   isOpen,
@@ -41,6 +49,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   const [showTagSuccess, setShowTagSuccess] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<PromptDocument | null>(null);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [showArtTools, setShowArtTools] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -151,6 +160,12 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
     }
   };
 
+  const appendArtTerm = (term: string) => {
+    const current = editingPrompt?.prompt || '';
+    const spacer = current.endsWith(' ') ? '' : ' ';
+    updateEditingState({ prompt: `${current}${spacer}${term}` });
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={editingPrompt?.act ? "Refine Persona Node" : "Forge New Persona"}>
         <div className="space-y-6">
@@ -189,7 +204,33 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                     <input className="w-full px-5 py-4 rounded-2xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm" value={editingPrompt?.description || ''} onChange={e => updateEditingState({ description: e.target.value })} placeholder="Briefly describe what this persona is for..." />
                   </div>
                   <div className="space-y-1.5 relative">
-                    <div className="flex justify-between items-center px-1"><label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Instruction Matrix</label><button type="button" onClick={async () => { setIsOptimizing(true); const opt = await geminiService.optimizePrompt(editingPrompt?.prompt || ''); updateEditingState({ prompt: opt }); setIsOptimizing(false); }} disabled={isOptimizing} className="flex items-center gap-1.5 text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-50">{isOptimizing ? <Loader2 size={10} className="animate-spin" /> : <Wand2 size={10} />} Auto-Tune</button></div>
+                    <div className="flex justify-between items-center px-1">
+                      <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1">Instruction Matrix</label>
+                      <div className="flex gap-2">
+                        {editingPrompt?.category === 'AI Art Generation' && (
+                          <div className="relative">
+                            <button type="button" onClick={() => setShowArtTools(!showArtTools)} className={`flex items-center gap-1.5 text-[10px] font-bold transition-colors ${showArtTools ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-heading)]'}`}>
+                              <Paintbrush size={10} /> Art Tools
+                            </button>
+                            {showArtTools && (
+                              <div className="absolute right-0 bottom-full mb-2 w-64 bg-[var(--bg-panel)] border border-[var(--border)] rounded-xl shadow-2xl z-30 p-3 grid grid-cols-1 gap-3 animate-in fade-in zoom-in-95">
+                                 {Object.entries(ART_PRESETS).map(([cat, items]) => (
+                                    <div key={cat} className="space-y-1">
+                                      <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">{cat}</div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {items.map(item => (
+                                          <button key={item} type="button" onClick={() => appendArtTerm(item)} className="px-2 py-1 rounded bg-[var(--bg-element)] hover:bg-[var(--accent)] hover:text-white text-[9px] font-medium transition-colors border border-[var(--border)]">{item}</button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                 ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <button type="button" onClick={async () => { setIsOptimizing(true); const opt = await geminiService.optimizePrompt(editingPrompt?.prompt || ''); updateEditingState({ prompt: opt }); setIsOptimizing(false); }} disabled={isOptimizing} className="flex items-center gap-1.5 text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-50">{isOptimizing ? <Loader2 size={10} className="animate-spin" /> : <Wand2 size={10} />} Auto-Tune</button>
+                      </div>
+                    </div>
                     <textarea required rows={10} className="w-full px-5 py-4 rounded-3xl bg-[var(--bg-element)] border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-sm font-mono leading-relaxed" value={editingPrompt?.prompt || ''} onChange={e => updateEditingState({ prompt: e.target.value })} placeholder="Persona behavior patterns..." />
                   </div>
                   <div className="space-y-1.5 relative">

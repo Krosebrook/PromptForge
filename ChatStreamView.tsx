@@ -1,6 +1,7 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { ChatSession, SimulationSettings } from './types';
-import { Cpu, ChevronDown, Activity, Search, MapPin, Globe, ExternalLink, Globe2, Sparkles, Terminal, FileCheck, Copy, Check, X, Eye } from 'lucide-react';
+import { Cpu, ChevronDown, Activity, Search, MapPin, Globe, ExternalLink, Globe2, Sparkles, Terminal, FileCheck, Copy, Check, X, Eye, Download, Video } from 'lucide-react';
 
 interface ChatStreamViewProps {
   session: ChatSession | null;
@@ -14,39 +15,30 @@ const ThinkingInspector: React.FC<{ text: string }> = ({ text }) => {
 
   return (
     <div className="mb-4 relative group/inspector z-10">
-      <div className={`border transition-all duration-500 ease-out overflow-hidden ${isOpen ? 'rounded-[1.5rem] bg-[#0c0a14] border-purple-500/30 shadow-[0_0_40px_-10px_rgba(168,85,247,0.2)]' : 'rounded-full bg-purple-500/5 border-purple-500/10 hover:border-purple-500/30'}`}>
+      <div className={`border transition-all duration-300 ease-out overflow-hidden ${isOpen ? 'rounded-2xl bg-[var(--bg-app)] border-purple-500/30' : 'rounded-xl bg-purple-500/5 border-purple-500/10 hover:border-purple-500/30'}`}>
         <button 
           onClick={() => setIsOpen(!isOpen)} 
-          className="w-full flex items-center justify-between p-2 pl-4 pr-5 hover:bg-purple-500/5 transition-all group/btn cursor-pointer"
+          className="w-full flex items-center justify-between p-3 cursor-pointer"
         >
           <div className="flex items-center gap-3">
-            <div className={`relative flex items-center justify-center w-8 h-8 rounded-full transition-all duration-500 ${isOpen ? 'bg-purple-500/10 rotate-90' : 'bg-purple-500/5'}`}>
-              {isOpen ? <Terminal size={14} className="text-purple-400" /> : <Cpu size={14} className="text-purple-400 opacity-70 group-hover/btn:scale-110 transition-transform" />}
+            <div className={`flex items-center justify-center w-6 h-6 rounded-lg transition-all duration-300 ${isOpen ? 'bg-purple-500/10 text-purple-400' : 'bg-purple-500/5 text-purple-400/60'}`}>
+               <Terminal size={12} />
             </div>
-            <div className="flex flex-col items-start text-left">
-              <span className="text-[9px] font-black text-purple-300 uppercase tracking-[0.2em]">Neural Chain of Thought</span>
-              {isOpen && <span className="text-[8px] text-purple-500/50 font-medium">Inspecting Model Reasoning...</span>}
-            </div>
+            <span className="text-[10px] font-mono font-bold text-purple-300/80 uppercase tracking-widest">Process Log</span>
           </div>
-          <div className="flex items-center gap-2">
-            {!isOpen && <span className="text-[8px] font-mono text-purple-400/40 uppercase tracking-widest hidden sm:block">Expand Protocol</span>}
-            <ChevronDown size={12} className={`text-purple-400/50 transition-transform duration-500 ${isOpen ? 'rotate-180' : ''}`} />
-          </div>
+          <ChevronDown size={14} className={`text-purple-400/50 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        <div className={`transition-[max-height,opacity] duration-500 ease-in-out overflow-hidden ${isOpen ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="relative border-t border-purple-500/10 bg-[#08060b]">
-            {/* Ghost Code Container */}
-            <div className="p-6 font-mono text-[10px] leading-relaxed text-purple-300/40 max-h-[400px] overflow-y-auto custom-scrollbar selection:bg-purple-500/20 selection:text-purple-100 relative z-0 italic opacity-80">
-               {text.split('\n').map((line, i) => (
-                 <div key={i} className="flex gap-4 hover:bg-white/5 rounded px-2 -mx-2 transition-colors group/line">
-                    <span className="shrink-0 w-6 text-right text-purple-500/10 select-none text-[8px] pt-0.5 font-sans italic not-italic group-hover/line:text-purple-500/30 transition-colors">{i + 1}</span>
-                    <span className="break-words w-full">{line || <span className="opacity-0">.</span>}</span>
-                 </div>
-               ))}
-            </div>
-            {/* Aesthetic Glow */}
-            <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-purple-500/5 to-transparent" />
+        <div className={`transition-[max-height,opacity] duration-300 ease-in-out overflow-hidden ${isOpen ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className="p-4 pt-0">
+             <div className="p-4 rounded-lg bg-black/40 border border-purple-500/10 font-mono text-[10px] leading-relaxed text-purple-200/50 overflow-y-auto custom-scrollbar max-h-[300px]">
+                {text.split('\n').map((line, i) => (
+                  <div key={i} className="flex gap-3 opacity-80 hover:opacity-100 transition-opacity">
+                     <span className="select-none text-purple-500/20 w-4 text-right">{i+1}</span>
+                     <span className="break-all">{line || ' '}</span>
+                  </div>
+                ))}
+             </div>
           </div>
         </div>
       </div>
@@ -60,14 +52,14 @@ const CitationDrawer: React.FC<{ chunks: any[], enabled?: boolean }> = ({ chunks
   if (enabled && !hasSources) return null;
 
   return (
-    <div className="mt-8 pt-8 border-t border-[var(--border)]/50 space-y-4 animate-in fade-in duration-700">
-      <div className="flex items-center justify-between px-2">
+    <div className="mt-6 pt-6 border-t border-[var(--border)]/50 space-y-3 animate-in fade-in duration-500">
+      <div className="flex items-center justify-between px-1">
         <h5 className="text-[9px] font-black uppercase tracking-[0.3em] flex items-center gap-2 text-blue-400">
-          <Globe2 size={14} className={hasSources ? "animate-spin-slow" : "opacity-50"} /> 
+          <Globe2 size={12} /> 
           Verified Sources
         </h5>
       </div>
-      <div className="grid grid-cols-1 gap-3">
+      <div className="grid grid-cols-1 gap-2">
         {chunks.map((chunk, idx) => {
           const isMap = !!chunk.maps;
           const uri = chunk.web?.uri || chunk.maps?.uri;
@@ -77,20 +69,20 @@ const CitationDrawer: React.FC<{ chunks: any[], enabled?: boolean }> = ({ chunks
           const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
 
           return (
-            <div key={idx} className="flex items-center gap-3 p-3 rounded-xl bg-[var(--bg-element)]/30 border border-[var(--border)]/50 hover:border-blue-500 hover:bg-blue-500/5 transition-all group">
+            <div key={idx} className="flex items-center gap-3 p-2 rounded-lg bg-[var(--bg-element)]/30 border border-[var(--border)]/50 hover:border-blue-500/30 hover:bg-blue-500/5 transition-all group">
                {isMap ? (
-                 <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0"><MapPin size={16} className="text-red-400" /></div>
+                 <div className="w-6 h-6 rounded-md bg-red-500/10 flex items-center justify-center shrink-0"><MapPin size={12} className="text-red-400" /></div>
                ) : (
-                 <img src={favicon} alt="" className="w-8 h-8 rounded-lg bg-white/5 shrink-0 p-1" onError={(e) => { e.currentTarget.src = "https://cdn-icons-png.flaticon.com/512/2103/2103633.png"; }} />
+                 <img src={favicon} alt="" className="w-6 h-6 rounded-md bg-white/5 shrink-0 p-0.5" onError={(e) => { e.currentTarget.src = "https://cdn-icons-png.flaticon.com/512/2103/2103633.png"; }} />
                )}
                <div className="min-w-0 flex-1">
                   <div className="text-[10px] font-bold text-[var(--text-heading)] truncate group-hover:text-blue-400 transition-colors">{title}</div>
                   <div className="text-[8px] text-[var(--text-muted)] truncate opacity-70 flex items-center gap-1.5">
                     <span className="truncate">{domain}</span>
-                    {isMap && <span className="px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 text-[7px] font-black uppercase tracking-wider">MAPS</span>}
+                    {isMap && <span className="px-1 py-px rounded bg-red-500/10 text-red-400 text-[7px] font-black uppercase tracking-wider">MAPS</span>}
                   </div>
                </div>
-               <a href={uri} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition-colors"><ExternalLink size={12} /></a>
+               <a href={uri} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md bg-[var(--bg-panel)] text-[var(--text-muted)] hover:bg-blue-500 hover:text-white transition-all border border-[var(--border)] group-hover:border-blue-500/30"><ExternalLink size={12} /></a>
             </div>
           );
         })}
@@ -152,21 +144,28 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({ session, setting
                 </div>
 
                 {m.role === 'model' && m.metadata?.thinking && (
-                  <div className="mb-6">
-                    <ThinkingInspector text={m.metadata.thinking} />
-                    <div className="flex items-center gap-4 mb-2 opacity-20 select-none">
-                       <div className="h-px bg-[var(--text-muted)] flex-1" />
-                       <span className="text-[8px] font-black uppercase tracking-[0.4em] text-[var(--text-muted)] flex items-center gap-2">
-                         <Sparkles size={10} /> Response Matrix
-                       </span>
-                       <div className="h-px bg-[var(--text-muted)] flex-1" />
-                    </div>
+                  <ThinkingInspector text={m.metadata.thinking} />
+                )}
+                
+                {m.videoUrl && (
+                  <div className="mb-6 rounded-2xl overflow-hidden bg-black border border-[var(--border)] relative group/video">
+                    <video src={m.videoUrl} controls className="w-full h-auto aspect-video" />
+                    <a 
+                      href={m.videoUrl} 
+                      download={`generated-video-${Date.now()}.mp4`}
+                      className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-lg opacity-0 group-hover/video:opacity-100 transition-opacity hover:bg-[var(--accent)] backdrop-blur-md"
+                      title="Download Video"
+                    >
+                      <Download size={16} />
+                    </a>
                   </div>
                 )}
                 
-                <div className={`leading-relaxed whitespace-pre-wrap font-serif text-base sm:text-lg selection:bg-[var(--accent)]/30 ${m.role === 'user' ? 'selection:bg-white/20' : ''}`}>
-                  {m.text}
-                </div>
+                {m.text && (
+                  <div className={`leading-relaxed whitespace-pre-wrap font-serif text-base sm:text-lg selection:bg-[var(--accent)]/30 ${m.role === 'user' ? 'selection:bg-white/20' : ''}`}>
+                    {m.text}
+                  </div>
+                )}
 
                 {m.role === 'model' && <CitationDrawer chunks={m.metadata?.groundingChunks || []} enabled={m.metadata?.searchEnabled} />}
               </div>
