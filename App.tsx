@@ -307,6 +307,28 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportData = () => {
+    const exportData = {
+      prompts: customPrompts,
+      templates: templates,
+      meta: {
+        exportedAt: new Date().toISOString(),
+        version: '2.3.0',
+        user: userProfile.identity.role
+      }
+    };
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `promptforge-library-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const openSettings = (target: 'primary' | 'secondary' = 'primary') => {
     setSettingsTarget(target);
     setIsSettingsOpen(true);
@@ -336,7 +358,7 @@ const App: React.FC = () => {
         onDownloadSession={handleDownloadSession}
         onClearAllHistory={() => setChatHistory([])}
         onImportPersona={() => {}}
-        onExportData={() => {}}
+        onExportData={handleExportData}
         onNewPersona={() => { setEditingPrompt({ id: crypto.randomUUID(), category: 'Miscellaneous', type: 'TEXT' }); setIsEditorOpen(true); }}
         onNewPipeline={createNewPipeline}
         onDeletePipeline={(id, e) => { e.stopPropagation(); setSavedPipelines(prev => prev.filter(p => p.id !== id)); if (selectedPipelineId === id) setSelectedPipelineId(null); }}

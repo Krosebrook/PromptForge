@@ -83,5 +83,24 @@ Details on Thinking Budget, Top-P, and Top-K.`,
   'API_REFERENCE.md': `# API Reference
 Methods for Gemini SDK and Live Multimodal integrations.`,
   'ARCHITECTURE.md': `# System Architecture
-Overview of the modular monolithic structure.`
+Overview of the modular monolithic structure.`,
+  'PIPELINE_GUIDE.md': `# Pipeline Architecture Guide
+The Pipeline Editor allows for the chaining of multiple Personas into a sequential execution flow.
+
+## Core Concepts
+- **Nodes**: Individual execution units. Can be an Input (System Data) or a Persona (AI Processing).
+- **Edges**: Directional connections that pipe the output of one node into the context of the next.
+- **Context Injection**: When Node A connects to Node B, the output of A is injected into B's prompt with a delimiter.
+
+## Execution Modes
+1. **Chain Run**: Executes the entire graph automatically, resolving dependencies layer by layer.
+2. **Step-Run**: Manually trigger specific nodes. This allows for "Human-in-the-loop" workflows where you can edit the output of Node A before running Node B.
+
+## Data Flow
+\`[System Input] -> [Persona A] -> (Edit Opportunity) -> [Persona B] -> Final Output\`
+
+## Technical Implementation
+- Uses \`reactflow\` for DAG visualization.
+- Execution logic uses a breadth-first traversal of the dependency graph.
+- State is managed via local React state and refs for async stability.`
 };

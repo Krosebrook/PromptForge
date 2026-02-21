@@ -39,6 +39,28 @@ interface SidebarProps {
   onInstallApp: () => void;
 }
 
+// Lightweight Levenshtein distance for fuzzy matching
+const getLevenshteinDistance = (a: string, b: string): number => {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({
   allPrompts,
   chatHistory,
@@ -132,51 +154,66 @@ export const Sidebar: React.FC<SidebarProps> = ({
         let score = 0;
         const name = p.act.toLowerCase();
         const desc = (p.description || '').toLowerCase();
-        const promptText = p.prompt.toLowerCase();
         const tags = p.tags.map(t => t.toLowerCase());
+        const promptText = p.prompt.toLowerCase();
 
-        // Exact Title Match: Highest Priority
-        if (name === qRaw) score += 500;
-        // Starts With Title: High Priority
-        else if (name.startsWith(qRaw)) score += 200;
-        
-        // Exact Description Match
-        if (desc === qRaw) score += 100;
+        // 1. Exact & Contiguous Matches (Highest Priority)
+        if (name === qRaw) score += 2000; // Perfect title match
+        if (tags.includes(qRaw)) score += 1500; // Perfect tag match
+        if (name.startsWith(qRaw)) score += 500; // Title starts with query
+        if (name.includes(qRaw)) score += 300; // Title contains contiguous query
 
+        // 2. Token Matching with Fuzzy Fallback
         let matchedTerms = 0;
+        
         terms.forEach(term => {
-          let termMatched = false;
-          
-          if (name.includes(term)) {
-            score += 50;
-            // Bonus for word boundary match
-            if (name.split(/[\s-]+/).includes(term)) score += 30;
-            termMatched = true;
-          }
+           let termMatched = false;
+           let termScore = 0;
 
-          if (tags.some(t => t === term)) {
-             score += 80; // Tag exact match weighted higher than description
+           // Check Title (High Weight)
+           if (name.includes(term)) {
+             termScore = Math.max(termScore, 150);
              termMatched = true;
-          } else if (tags.some(t => t.includes(term))) {
-             score += 40;
-             termMatched = true;
-          }
+           } else if (term.length > 2) {
+             // Fuzzy check title words
+             const titleWords = name.split(/\s+/);
+             if (titleWords.some(w => getLevenshteinDistance(term, w) <= (term.length > 4 ? 2 : 1))) {
+               termScore = Math.max(termScore, 80); // Title typo match
+               termMatched = true;
+             }
+           }
 
-          if (desc.includes(term)) {
-             score += 20;
+           // Check Tags (High Weight - as requested)
+           if (tags.some(t => t === term)) {
+             termScore = Math.max(termScore, 200); // Exact tag match
              termMatched = true;
-          }
-          if (promptText.includes(term)) {
-             score += 10;
+           } else if (tags.some(t => t.includes(term))) {
+             termScore = Math.max(termScore, 100); // Partial tag match
              termMatched = true;
-          }
+           } else if (term.length > 2 && tags.some(t => getLevenshteinDistance(term, t) <= 1)) {
+             termScore = Math.max(termScore, 60); // Fuzzy tag match
+             termMatched = true;
+           }
 
-          if (termMatched) matchedTerms++;
+           // Check Description (Medium Weight)
+           if (desc.includes(term)) {
+             termScore = Math.max(termScore, 50);
+             termMatched = true;
+           }
+
+           // Check Body (Low Weight)
+           if (promptText.includes(term)) {
+             termScore = Math.max(termScore, 20);
+             termMatched = true;
+           }
+
+           score += termScore;
+           if (termMatched) matchedTerms++;
         });
 
-        // Boost if all terms matched
-        if (matchedTerms === terms.length && terms.length > 0) {
-           score += 150;
+        // 3. Completeness Bonus
+        if (matchedTerms === terms.length && terms.length > 1) {
+           score += 250; // Boost if all query words appear somewhere
         }
 
         return { p, score };

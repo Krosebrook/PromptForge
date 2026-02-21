@@ -9,7 +9,7 @@ import { PromptItem, PipelineConfig } from './types';
 import { 
   Play, Save, Plus, X, Loader2, AlertCircle, 
   CheckCircle2, Wand2, Terminal, ChevronDown, ChevronRight, Eraser,
-  MessageSquare
+  MessageSquare, Square, PenTool, Edit3
 } from 'lucide-react';
 
 interface PipelineEditorProps {
@@ -33,7 +33,7 @@ const InputNode = ({ data, id }: { data: any, id: string }) => {
          <textarea 
             className="w-full bg-[#1e293b] text-xs font-mono text-white p-3 rounded-xl outline-none border border-transparent focus:border-emerald-500/50 resize-y min-h-[100px] leading-relaxed placeholder:text-slate-600" 
             placeholder="Enter initial context or data..."
-            defaultValue={data.value}
+            value={data.value}
             onChange={(e) => data.onChange(id, e.target.value)}
             onMouseDown={(e) => e.stopPropagation()} 
          />
@@ -67,7 +67,7 @@ const PersonaNode = ({ data, id }: { data: any, id: string }) => {
                 <button 
                     onClick={() => data.onRunNode(id)}
                     className="p-1.5 rounded-lg bg-[#1e293b] text-emerald-500 hover:bg-emerald-500 hover:text-white transition-colors border border-emerald-500/30"
-                    title="Run this node only"
+                    title="Run this node only (Manual Pipe)"
                 >
                     <Play size={12} fill="currentColor" />
                 </button>
@@ -78,33 +78,44 @@ const PersonaNode = ({ data, id }: { data: any, id: string }) => {
       <div className="p-4 bg-[#1e293b] space-y-3 rounded-b-xl">
          {/* Prompt Preview */}
          <div className="relative group/prompt">
-             <div className="text-[10px] text-slate-400 line-clamp-2 italic border-l-2 border-slate-600 pl-3 leading-relaxed opacity-80 group-hover/prompt:opacity-100 transition-opacity">
+             <div className="text-[10px] text-slate-400 line-clamp-2 italic border-l-2 border-slate-600 pl-3 leading-relaxed opacity-80 group-hover/prompt:opacity-100 transition-opacity select-none cursor-help" title={data.promptPreview}>
                 {data.promptPreview}
              </div>
          </div>
          
          {/* Output Section */}
-         {(data.output || data.status === 'completed') && (
-            <div className="animate-in fade-in slide-in-from-top-2 pt-2 border-t border-[#334155]">
-               <button 
-                  onClick={() => setExpanded(!expanded)}
-                  className="w-full flex items-center justify-between p-2 rounded-lg bg-[#0f172a] hover:bg-black/20 border border-[#334155] text-[9px] font-black uppercase tracking-wider text-slate-500 mb-2 transition-colors"
-               >
-                  <span className="flex items-center gap-2"><MessageSquare size={10} /> Output (Editable)</span>
-                  {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-               </button>
-               
-               {expanded && (
+         <div className="animate-in fade-in slide-in-from-top-2 pt-2 border-t border-[#334155]">
+            <button 
+                onClick={() => setExpanded(!expanded)}
+                className="w-full flex items-center justify-between p-2 rounded-lg bg-[#0f172a] hover:bg-black/20 border border-[#334155] text-[9px] font-black uppercase tracking-wider text-slate-500 mb-2 transition-colors group/btn"
+            >
+                <span className="flex items-center gap-2">
+                  <MessageSquare size={10} /> 
+                  {data.output ? 'Output' : 'Output Area'}
+                  <span className="text-[8px] opacity-50 font-normal normal-case tracking-normal ml-1 bg-[#1e293b] px-1.5 py-0.5 rounded flex items-center gap-1 group-hover/btn:text-blue-400 transition-colors">
+                    <Edit3 size={8} /> Editable
+                  </span>
+                </span>
+                {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </button>
+            
+            {expanded && (
+                <div className="relative group/edit">
                   <textarea 
-                     className="w-full bg-[#0f172a] rounded-xl p-3 border border-[#334155] text-[11px] text-slate-300 font-mono leading-relaxed outline-none focus:border-blue-500/50 resize-y min-h-[100px] custom-scrollbar"
-                     value={data.output}
-                     onChange={(e) => data.onOutputChange(id, e.target.value)}
-                     placeholder="Waiting for generation..."
-                     onMouseDown={(e) => e.stopPropagation()}
+                      className={`w-full bg-[#0f172a] rounded-xl p-3 border text-[11px] font-mono leading-relaxed outline-none focus:border-blue-500/50 resize-y min-h-[100px] custom-scrollbar transition-colors ${data.status === 'completed' ? 'border-blue-500/30 text-blue-100' : 'border-[#334155] text-slate-300'}`}
+                      value={data.output}
+                      onChange={(e) => data.onOutputChange(id, e.target.value)}
+                      placeholder="Waiting for execution... (Or type manually to inject data)"
+                      onMouseDown={(e) => e.stopPropagation()}
                   />
-               )}
-            </div>
-         )}
+                  <div className="absolute bottom-2 right-2 opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none">
+                     <div className="p-1 rounded bg-black/50 text-[8px] text-white/50 font-bold uppercase tracking-widest backdrop-blur-sm">
+                        Manual Edit
+                     </div>
+                  </div>
+                </div>
+            )}
+        </div>
          
          {data.status === 'error' && (
             <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold flex items-center gap-2">
@@ -130,6 +141,8 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
   const [pipelineName, setPipelineName] = useState(pipeline.name);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Refs for stable access inside callbacks without re-creating functions
   const nodesRef = useRef(nodes);
@@ -149,7 +162,11 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
 
   const onOutputChange = useCallback((id: string, value: string) => {
     setNodes((nds) => nds.map((node) => {
-      if (node.id === id) return { ...node, data: { ...node.data, output: value } };
+      if (node.id === id) {
+        // Automatically mark as completed if user types manually (and not currently running)
+        const newStatus = node.data.status === 'running' ? 'running' : 'completed';
+        return { ...node, data: { ...node.data, output: value, status: newStatus } };
+      }
       return node;
     }));
   }, [setNodes]);
@@ -168,23 +185,13 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
         // 2. Gather inputs from parents
         const incomingEdges = currentEdges.filter(e => e.target === nodeId);
         let contextString = "";
-        let missingInputs = false;
-
+        
         for (const edge of incomingEdges) {
             const sourceNode = currentNodes.find(n => n.id === edge.source);
             if (!sourceNode) continue;
             
             const val = sourceNode.type === 'input' ? sourceNode.data.value : sourceNode.data.output;
-            
-            if (!val && val !== 0) {
-                 missingInputs = true;
-                 break;
-            }
-            contextString += `\n\n--- INPUT FROM [${sourceNode.data.label || 'System'}] ---\n${val}\n`;
-        }
-
-        if (missingInputs) {
-             throw new Error("Waiting for input from previous nodes.");
+            contextString += `\n\n--- INPUT FROM [${sourceNode.data.label || 'System'}] ---\n${val || '(Empty Input)'}\n`;
         }
 
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
@@ -227,7 +234,7 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
 
         return changed ? { ...node, data: newData } : node;
      }));
-  }, [onInputChange, runSingleNode, onOutputChange, setNodes, nodes.length]); // Dependencies optimized to avoid deep loop
+  }, [onInputChange, runSingleNode, onOutputChange, setNodes, nodes.length]);
 
   const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true, markerEnd: { type: MarkerType.ArrowClosed } }, eds)), [setEdges]);
 
@@ -273,14 +280,23 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
         return n;
      }));
   };
+  
+  const stopExecution = () => {
+      if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+      }
+      setIsExecuting(false);
+  };
 
   const executePipeline = async () => {
     if (isExecuting) return;
     setIsExecuting(true);
+    abortControllerRef.current = new AbortController();
     
-    // 1. Reset all personas to idle (Fresh Run)
+    // 1. Reset statuses for a clean run
     setNodes(nds => nds.map(n => {
-        if (n.type === 'persona') return { ...n, data: { ...n.data, status: 'idle', output: '' } };
+        if (n.type === 'persona') return { ...n, data: { ...n.data, status: 'idle' } }; 
         return n;
     }));
 
@@ -296,28 +312,22 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
     
     // 3. Execution Graph Logic
-    const executed = new Set<string>(inputNode ? [inputNode.id] : []);
+    const completedInThisRun = new Set<string>(inputNode ? [inputNode.id] : []);
     let active = true;
 
-    while (active) {
+    while (active && abortControllerRef.current && !abortControllerRef.current.signal.aborted) {
         // Find nodes ready to execute
-        // A node is ready if:
-        // 1. It is not input
-        // 2. It has not been executed
-        // 3. All its source nodes have outputs in 'results'
-        
-        // Use refs to get latest state during async loop
         const currentNodes = nodesRef.current;
         const currentEdges = edgesRef.current;
 
         const readyNodes = currentNodes.filter(n => {
             if (n.type === 'input') return false;
-            if (executed.has(n.id)) return false;
+            if (completedInThisRun.has(n.id)) return false;
 
             const incoming = currentEdges.filter(e => e.target === n.id);
-            if (incoming.length === 0) return false; // Orphans don't run automatically
+            if (incoming.length === 0) return false; 
 
-            const allSourcesReady = incoming.every(e => results.has(e.source));
+            const allSourcesReady = incoming.every(e => completedInThisRun.has(e.source));
             return allSourcesReady;
         });
 
@@ -328,17 +338,17 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
 
         // Parallel execution for current layer
         await Promise.all(readyNodes.map(async (node) => {
-            // Set running
+            if (abortControllerRef.current?.signal.aborted) return;
+
             setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, status: 'running' } } : n));
 
             try {
-                // Build Context
                 const incoming = currentEdges.filter(e => e.target === node.id);
                 let contextString = "";
                 
                 incoming.forEach(e => {
                     const sourceNode = currentNodes.find(sn => sn.id === e.source);
-                    const sourceVal = results.get(e.source);
+                    const sourceVal = results.get(e.source); 
                     const label = sourceNode?.data.label || 'System';
                     contextString += `\n\n--- INPUT FROM [${label}] ---\n${sourceVal}\n`;
                 });
@@ -354,7 +364,7 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
                 results.set(node.id, output);
 
                 setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, status: 'completed', output } } : n));
-                executed.add(node.id);
+                completedInThisRun.add(node.id);
 
             } catch (err) {
                 console.error("Exec error", err);
@@ -364,6 +374,7 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
     }
 
     setIsExecuting(false);
+    abortControllerRef.current = null;
   };
 
   const handleSave = () => {
@@ -402,13 +413,21 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
             >
                <Plus size={14} /> Add Node
             </button>
-            <button 
-               onClick={executePipeline} 
-               disabled={isExecuting}
-               className="flex items-center gap-2 px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20 active:scale-95"
-            >
-               {isExecuting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />} Run Chain
-            </button>
+            {isExecuting ? (
+                <button 
+                    onClick={stopExecution}
+                    className="flex items-center gap-2 px-6 py-2 rounded-lg bg-red-500/10 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white text-xs font-bold uppercase tracking-wider transition-all shadow-lg active:scale-95"
+                >
+                    <Square size={12} fill="currentColor" /> Stop Chain
+                </button>
+            ) : (
+                <button 
+                   onClick={executePipeline} 
+                   className="flex items-center gap-2 px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20 active:scale-95"
+                >
+                   <Play size={14} fill="currentColor" /> Run Chain
+                </button>
+            )}
             <button onClick={handleSave} className="p-2.5 rounded-lg bg-[#1e293b] text-indigo-400 hover:text-white transition-all hover:bg-indigo-500"><Save size={18} /></button>
          </div>
       </div>
