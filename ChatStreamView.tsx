@@ -167,7 +167,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({ session, setting
                   </div>
                 )}
 
-                {m.role === 'model' && <CitationDrawer chunks={m.metadata?.groundingChunks || []} enabled={m.metadata?.searchEnabled} />}
+                {m.role === 'model' && <CitationDrawer chunks={m.metadata?.groundingChunks || []} enabled={settings.enableSearch} />}
               </div>
               <div className={`flex items-center gap-4 px-4 ${m.role === 'user' ? 'justify-end' : 'justify-start'} opacity-50 hover:opacity-100 transition-opacity`}>
                  {m.role === 'model' && m.metadata && (

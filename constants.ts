@@ -17,7 +17,8 @@ export const DEFAULT_SETTINGS: SimulationSettings = {
   topP: 0.95,
   topK: 64,
   thinkingBudget: 0,
-  maxOutputTokens: 8192
+  maxOutputTokens: 8192,
+  enableSearch: true
 };
 
 export const TUTORIAL_STEPS = [
