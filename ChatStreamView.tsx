@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { ChatSession, SimulationSettings } from './types';
-import { Cpu, ChevronDown, Activity, Search, MapPin, Globe, ExternalLink, Globe2, Sparkles, Terminal, FileCheck, Copy, Check, X, Eye, Download, Video } from 'lucide-react';
+import { Cpu, ChevronDown, Activity, Search, MapPin, Globe, ExternalLink, Sparkles, Terminal, FileCheck, Copy, Check, X, Eye, Download, Video } from 'lucide-react';
 
 interface ChatStreamViewProps {
   session: ChatSession | null;
@@ -55,7 +55,7 @@ const CitationDrawer: React.FC<{ chunks: any[], enabled?: boolean }> = ({ chunks
     <div className="mt-6 pt-6 border-t border-[var(--border)]/50 space-y-3 animate-in fade-in duration-500">
       <div className="flex items-center justify-between px-1">
         <h5 className="text-[9px] font-black uppercase tracking-[0.3em] flex items-center gap-2 text-blue-400">
-          <Globe2 size={12} /> 
+          <Globe size={12} /> 
           Verified Sources
         </h5>
       </div>

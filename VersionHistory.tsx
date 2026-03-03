@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { Clock, RotateCcw, ChevronRight, FileText, Calendar, Trash2, GitCommit, Tag } from 'lucide-react';
+import { Clock, RotateCcw, ChevronRight, FileText, Calendar, Trash2, GitCommitHorizontal, Tag } from 'lucide-react';
 import { PersonaVersion } from './types';
 
 interface VersionHistoryProps {
@@ -123,7 +123,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({ versions, onReve
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex items-center justify-between mb-6">
          <h4 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2">
-            <GitCommit size={14} /> Version Timeline
+            <GitCommitHorizontal size={14} /> Version Timeline
          </h4>
          <span className="px-2 py-0.5 rounded-md bg-[var(--bg-element)] border border-[var(--border)] text-[9px] font-mono text-[var(--text-muted)]">
             {versions.length} Total

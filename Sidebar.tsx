@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
-  Search, Book, Star, History, FileText, Filter, Layers, Users, SortAsc, 
+  Search, Book, Star, History, FileText, Filter, Layers, Users, ArrowUpAZ, 
   ArrowUpDown, Calendar, Cpu, X, Eraser, Zap, Upload, Archive, Plus,
   FileDown, Trash2, Settings, HelpCircle, Hash, User, GripVertical, Download,
   ChevronDown, ChevronRight, FileSearch, GitFork, Play
@@ -327,7 +327,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                              </select>
                           </div>
                           <div className="flex-1 space-y-2">
-                             <label className="text-[9px] font-bold text-[var(--text-muted)] flex items-center gap-1"><SortAsc size={10} /> Sort</label>
+                             <label className="text-[9px] font-bold text-[var(--text-muted)] flex items-center gap-1"><ArrowUpAZ size={10} /> Sort</label>
                              <select className="w-full bg-[var(--bg-panel)] border border-[var(--border)] rounded-md px-2 py-1 text-[10px] outline-none" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as any)}>
                                 <option value="name">A-Z Name</option>
                                 <option value="recent">Recently Used</option>
