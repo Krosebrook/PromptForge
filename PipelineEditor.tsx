@@ -194,7 +194,7 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
             contextString += `\n\n--- INPUT FROM [${sourceNode.data.label || 'System'}] ---\n${val || '(Empty Input)'}\n`;
         }
 
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
         const fullPrompt = `${targetNode.data.promptPreview}\n\n[CONTEXT DATA]:${contextString || '(No upstream inputs)'}\n\n[INSTRUCTION]: Process the Context Data according to your Persona rules.`;
 
         const response = await ai.models.generateContent({
@@ -287,6 +287,7 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
           abortControllerRef.current = null;
       }
       setIsExecuting(false);
+      setNodes(nds => nds.map(n => n.data.status === 'running' ? { ...n, data: { ...n.data, status: 'idle' } } : n));
   };
 
   const executePipeline = async () => {
@@ -309,7 +310,7 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
         results.set(inputNode.id, inputNode.data.value || '');
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
     
     // 3. Execution Graph Logic
     const completedInThisRun = new Set<string>(inputNode ? [inputNode.id] : []);
@@ -338,7 +339,7 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
 
         // Parallel execution for current layer
         await Promise.all(readyNodes.map(async (node) => {
-            if (abortControllerRef.current?.signal.aborted) return;
+            if (!abortControllerRef.current || abortControllerRef.current.signal.aborted) return;
 
             setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, status: 'running' } } : n));
 
@@ -360,6 +361,8 @@ export const PipelineEditor: React.FC<PipelineEditorProps> = ({ pipeline, allPro
                     contents: fullPrompt
                 });
                 
+                if (!abortControllerRef.current || abortControllerRef.current.signal.aborted) return;
+
                 const output = response.text || '';
                 results.set(node.id, output);
 

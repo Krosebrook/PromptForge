@@ -43,7 +43,7 @@ async function decodeAudioData(
 
 class GeminiService {
   private getAI() {
-    return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
   }
 
   public async optimizePrompt(rawPrompt: string): Promise<string> {
@@ -126,7 +126,7 @@ class GeminiService {
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+    const response = await fetch(`${downloadLink}&key=${process.env.GEMINI_API_KEY}`);
     const blob = await response.blob();
     return URL.createObjectURL(blob);
   }
